@@ -456,20 +456,22 @@ async function seedAccounts(tenantId, name){
 async function renderDtes(content, actions){
   actions.innerHTML = `
     <input type="file" id="dte-file" accept="application/json" style="display:none;">
+    <button class="btn" id="manual-sale-btn">+ Venta con documento físico</button>
     <button class="btn primary" id="upload-dte-btn">+ Subir DTE (JSON)</button>
   `;
   document.getElementById('upload-dte-btn').onclick = ()=> document.getElementById('dte-file').click();
   document.getElementById('dte-file').onchange = handleDteFile;
+  document.getElementById('manual-sale-btn').onclick = openManualSaleModal;
 
   content.innerHTML = '<div class="empty">Cargando…</div>';
   const docs = await pg(`dte_documents?select=*&tenant_id=eq.${activeTenantId}&order=fecha_emision.desc`);
-  if(!docs.length){ content.innerHTML = '<div class="empty">Sin documentos DTE para este cliente. Sube el primero.</div>'; return; }
+  if(!docs.length){ content.innerHTML = '<div class="empty">Sin documentos para este cliente. Sube un DTE o registra una venta con documento físico.</div>'; return; }
   content.innerHTML = `<table class="grid"><thead><tr>
     <th>Fecha</th><th>Tipo</th><th>N° control</th><th>Contraparte</th><th>Monto</th><th>Estado</th><th></th>
   </tr></thead><tbody>` + docs.map(d=>`
     <tr>
       <td class="mono">${d.fecha_emision||''}</td>
-      <td class="mono">${d.tipo_dte||''}</td>
+      <td class="mono">${d.tipo_dte||''}${d.raw_json===null?' (físico)':''}</td>
       <td class="mono">${d.numero_control||''}</td>
       <td>${d.nombre_receptor && d.nombre_receptor!==d.nombre_emisor ? d.nombre_receptor : (d.nombre_emisor||'')}</td>
       <td class="mono">$${Number(d.monto_total||0).toFixed(2)}</td>
@@ -477,6 +479,90 @@ async function renderDtes(content, actions){
       <td><button class="btn small" data-id="${d.id}">Ver / clasificar</button></td>
     </tr>`).join('') + '</tbody></table>';
   content.querySelectorAll('button[data-id]').forEach(b=> b.onclick = ()=> openDteDetail(b.dataset.id));
+}
+
+function openManualSaleModal(){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Venta con documento físico</h3>
+    <p class="hint">Para clientes cuyas ventas todavía no van por factura electrónica. Después de guardar, la clasificas igual que un DTE normal (cuenta + producto), y el inventario se descuenta solo.</p>
+    <div class="field"><label>Fecha</label><input id="ms-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Tipo de documento</label>
+      <select id="ms-tipo"><option value="01">Factura (consumidor final)</option><option value="03">Comprobante de Crédito Fiscal</option></select>
+    </div>
+    <div class="field"><label>N° de documento (correlativo físico)</label><input id="ms-numero"></div>
+    <div class="field"><label>Nombre del cliente</label><input id="ms-cliente" placeholder="Consumidor final si no aplica"></div>
+    <div class="field"><label>NIT/NRC del cliente (solo si es Crédito Fiscal)</label><input id="ms-nit-cliente"></div>
+    <div id="ms-items-container"></div>
+    <button class="btn small" id="ms-add-item-btn">+ Agregar ítem</button>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save">Guardar venta</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('ms-add-item-btn').onclick = addManualSaleItemRow;
+  document.getElementById('modal-save').onclick = saveManualSale;
+  addManualSaleItemRow();
+}
+function addManualSaleItemRow(){
+  const c = document.getElementById('ms-items-container');
+  const row = document.createElement('div');
+  row.className = 'lineRow';
+  row.style.gridTemplateColumns = '2fr 1fr 1fr 1fr auto';
+  row.innerHTML = `
+    <input class="ms-desc" type="text" placeholder="Descripción">
+    <input class="ms-cant" type="number" step="0.01" placeholder="Cantidad">
+    <input class="ms-precio" type="number" step="0.01" placeholder="Precio unit. (con IVA)">
+    <select class="ms-exenta"><option value="no">Gravada</option><option value="si">Exenta</option></select>
+    <button class="btn small danger" type="button">×</button>`;
+  row.querySelector('button').onclick = ()=> row.remove();
+  c.appendChild(row);
+}
+async function saveManualSale(){
+  const fecha = document.getElementById('ms-fecha').value;
+  const tipo = document.getElementById('ms-tipo').value;
+  const numero = document.getElementById('ms-numero').value.trim();
+  const clienteNombre = document.getElementById('ms-cliente').value.trim() || 'Consumidor final';
+  const clienteNit = document.getElementById('ms-nit-cliente').value.trim() || null;
+  const rows = document.querySelectorAll('#ms-items-container .lineRow');
+  const items = Array.from(rows).map(r=>{
+    const cantidad = parseFloat(r.querySelector('.ms-cant').value)||0;
+    const precioConIva = parseFloat(r.querySelector('.ms-precio').value)||0;
+    const esExenta = r.querySelector('.ms-exenta').value === 'si';
+    const totalLinea = cantidad * precioConIva;
+    const gravada = esExenta ? 0 : totalLinea / 1.13;
+    const exenta = esExenta ? totalLinea : 0;
+    return { descripcion: r.querySelector('.ms-desc').value.trim(), cantidad, venta_gravada: gravada, venta_exenta: exenta };
+  }).filter(it => it.descripcion && it.cantidad>0);
+  if(!items.length){ toast('Agrega al menos un ítem con descripción y cantidad','err'); return; }
+  const tenant = tenants.find(t=>t.id===activeTenantId);
+  const montoTotal = items.reduce((s,it)=> s + it.venta_gravada*1.13 + it.venta_exenta, 0);
+  try{
+    const created = await pg('dte_documents', {method:'POST', body: JSON.stringify({
+      tenant_id: activeTenantId,
+      codigo_generacion: null,
+      numero_control: numero || null,
+      tipo_dte: tipo,
+      ambiente: 'fisico',
+      fecha_emision: fecha,
+      nit_emisor: tenant ? tenant.nit : null,
+      nombre_emisor: tenant ? tenant.nombre : null,
+      nit_receptor: clienteNit,
+      nombre_receptor: clienteNombre,
+      contraparte_nit: clienteNit,
+      monto_total: montoTotal,
+      total_pagar: montoTotal,
+      raw_json: null,
+      estado: 'pendiente'
+    }), headers:{'Prefer':'return=representation'}});
+    const dteId = created[0].id;
+    const itemRows = items.map((it,idx)=>({ dte_id: dteId, num_item: idx+1, descripcion: it.descripcion, cantidad: it.cantidad, precio_uni: 0, venta_gravada: it.venta_gravada, venta_exenta: it.venta_exenta }));
+    await pg('dte_items', {method:'POST', body: JSON.stringify(itemRows), headers:{'Prefer':'return=minimal'}});
+    toast('Venta registrada. Ahora clasifícala para descontar inventario.','ok');
+    closeModal();
+    openDteDetail(dteId);
+  }catch(e){ toast('Error guardando venta: '+e.message,'err'); }
 }
 
 function handleDteFile(e){
