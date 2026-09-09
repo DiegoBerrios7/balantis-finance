@@ -763,12 +763,16 @@ function openInventoryItemModal(){
     <div class="field"><label>Unidad</label><input id="inv-unidad" value="unidad"></div>
     <div class="field"><label>Existencia inicial</label><input id="inv-existencia" type="number" step="0.01" value="0"></div>
     <div class="field"><label>Costo unitario inicial</label><input id="inv-costo" type="number" step="0.0001" value="0"></div>
-    <div class="field"><label>Cuenta de inventario (Activo) — opcional, para generar el asiento automático</label>
-      <select id="inv-cta-inv"><option value="">— no generar asiento automático —</option>${acctOptions(null)}</select>
+    <div class="field"><label>Cuenta de inventario (Activo) — necesaria para que el valor se refleje en tu contabilidad</label>
+      <select id="inv-cta-inv"><option value="">— no generar asiento contable —</option>${acctOptions(null)}</select>
     </div>
-    <div class="field"><label>Cuenta de costo de venta (Costo) — opcional</label>
+    <div class="field"><label>Cuenta de costo de venta (Costo) — se usa cuando vendas este producto</label>
       <select id="inv-cta-costo"><option value="">—</option>${acctOptions(null)}</select>
     </div>
+    <div class="field"><label>¿Con qué se pagó esta existencia inicial? (contrapartida) — Banco, Caja o Proveedores</label>
+      <select id="inv-cta-contra"><option value="">— no generar asiento contable —</option>${acctOptions(null)}</select>
+    </div>
+    <p class="hint">Si dejas la cuenta de inventario y la contrapartida vacías, el producto se crea sin afectar tu contabilidad (solo control de cantidades). Si las llenas, se genera el asiento: Debe Inventario / Haber la cuenta que elijas.</p>
     <div class="modalactions">
       <button class="btn" id="modal-cancel">Cancelar</button>
       <button class="btn primary" id="modal-save">Crear producto</button>
@@ -780,19 +784,29 @@ function openInventoryItemModal(){
 async function saveInventoryItem(){
   const nombre = document.getElementById('inv-nombre').value.trim();
   if(!nombre){ toast('El nombre es obligatorio','err'); return; }
+  const existenciaInicial = parseFloat(document.getElementById('inv-existencia').value)||0;
+  const costoInicial = parseFloat(document.getElementById('inv-costo').value)||0;
+  const cuentaContra = document.getElementById('inv-cta-contra').value || null;
   const payload = {
     tenant_id: activeTenantId,
     codigo: document.getElementById('inv-codigo').value.trim() || null,
     nombre,
     unidad: document.getElementById('inv-unidad').value.trim() || 'unidad',
-    existencia_actual: parseFloat(document.getElementById('inv-existencia').value)||0,
-    costo_promedio: parseFloat(document.getElementById('inv-costo').value)||0,
+    existencia_actual: 0,
+    costo_promedio: 0,
     cuenta_inventario_id: document.getElementById('inv-cta-inv').value || null,
     cuenta_costo_id: document.getElementById('inv-cta-costo').value || null
   };
   try{
-    await pg('inventory_items', {method:'POST', body: JSON.stringify(payload), headers:{'Prefer':'return=minimal'}});
-    toast('Producto creado','ok');
+    const created = await pg('inventory_items', {method:'POST', body: JSON.stringify(payload), headers:{'Prefer':'return=representation'}});
+    const itemId = created[0].id;
+    if(existenciaInicial > 0){
+      const out = await pg('rpc/registrar_entrada_inventario', {method:'POST', body: JSON.stringify({p_item_id:itemId, p_cantidad:existenciaInicial, p_costo_unitario:costoInicial, p_fecha:new Date().toISOString().slice(0,10), p_cuenta_contrapartida_id:cuentaContra})});
+      if(out.error){ toast('Producto creado, pero: '+out.error,'err'); closeModal(); render(); return; }
+      toast(`Producto creado${out.asiento_generado?' con asiento contable generado':''}`,'ok');
+    } else {
+      toast('Producto creado','ok');
+    }
     closeModal(); render();
   }catch(e){ toast('Error: '+e.message,'err'); }
 }
@@ -804,7 +818,10 @@ function openEntradaModal(itemId, nombre){
     <div class="field"><label>Fecha</label><input id="ent-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>Cantidad</label><input id="ent-cantidad" type="number" step="0.01"></div>
     <div class="field"><label>Costo unitario de esta compra</label><input id="ent-costo" type="number" step="0.0001"></div>
-    <p class="hint">El costo promedio del producto se recalcula automáticamente con esta compra.</p>
+    <div class="field"><label>¿Con qué se pagó? (contrapartida) — Banco, Caja o Proveedores</label>
+      <select id="ent-cta-contra"><option value="">— no generar asiento contable —</option>${acctOptions(null)}</select>
+    </div>
+    <p class="hint">El costo promedio del producto se recalcula automáticamente con esta compra. Si eliges la contrapartida, se genera el asiento contable correspondiente.</p>
     <div class="modalactions">
       <button class="btn" id="modal-cancel">Cancelar</button>
       <button class="btn primary" id="modal-save">Registrar entrada</button>
@@ -815,11 +832,12 @@ function openEntradaModal(itemId, nombre){
     const cantidad = parseFloat(document.getElementById('ent-cantidad').value)||0;
     const costo = parseFloat(document.getElementById('ent-costo').value)||0;
     const fecha = document.getElementById('ent-fecha').value;
+    const cuentaContra = document.getElementById('ent-cta-contra').value || null;
     if(cantidad<=0){ toast('La cantidad debe ser mayor a cero','err'); return; }
     try{
-      const out = await pg('rpc/registrar_entrada_inventario', {method:'POST', body: JSON.stringify({p_item_id:itemId, p_cantidad:cantidad, p_costo_unitario:costo, p_fecha:fecha})});
+      const out = await pg('rpc/registrar_entrada_inventario', {method:'POST', body: JSON.stringify({p_item_id:itemId, p_cantidad:cantidad, p_costo_unitario:costo, p_fecha:fecha, p_cuenta_contrapartida_id:cuentaContra})});
       if(out.error){ toast(out.error,'err'); return; }
-      toast(`Entrada registrada. Nueva existencia: ${Number(out.nueva_existencia).toFixed(2)}`,'ok');
+      toast(`Entrada registrada. Nueva existencia: ${Number(out.nueva_existencia).toFixed(2)}${out.asiento_generado?' · asiento contable generado':''}`,'ok');
       closeModal(); render();
     }catch(e){ toast('Error: '+e.message,'err'); }
   };
