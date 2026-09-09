@@ -137,6 +137,9 @@
       <button class="navbtn" data-view="diario">Libro Diario</button>
       <button class="navbtn" data-view="mayor">Libro Mayor</button>
       <button class="navbtn" data-view="balanza">Balanza de Comprobación</button>
+      <button class="navbtn" data-view="libro_compras">Libro de Compras</button>
+      <button class="navbtn" data-view="libro_ventas_cf">Libro Ventas Consumidor Final</button>
+      <button class="navbtn" data-view="libro_ventas_ccf">Libro Ventas Crédito Fiscal</button>
       <button class="navbtn" data-view="estados">Estados Financieros</button>
       <button class="navbtn" data-view="apertura">Saldos de apertura</button>
       <button class="navbtn" data-view="cuentas">Plan de cuentas</button>
@@ -267,7 +270,7 @@ function acctOptions(selectedId){
 function setView(v){
   view = v;
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
-  const titles = {dtes:'Documentos DTE', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', clientes:'Clientes'};
+  const titles = {dtes:'Documentos DTE', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', libro_compras:'Libro de Compras', libro_ventas_cf:'Libro de Ventas — Consumidor Final', libro_ventas_ccf:'Libro de Ventas — Crédito Fiscal', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', clientes:'Clientes'};
   document.getElementById('viewtitle').textContent = titles[v];
   render();
 }
@@ -294,6 +297,9 @@ async function render(){
   else if(view==='diario') await renderDiario(content, actions);
   else if(view==='mayor') await renderMayor(content, actions);
   else if(view==='balanza') await renderBalanza(content, actions);
+  else if(view==='libro_compras') await renderLibroCompras(content, actions);
+  else if(view==='libro_ventas_cf') await renderLibroVentas(content, actions, '01');
+  else if(view==='libro_ventas_ccf') await renderLibroVentas(content, actions, '03');
   else if(view==='estados') await renderEstados(content, actions);
   else if(view==='apertura') await renderApertura(content, actions);
   else if(view==='cuentas') await renderCuentas(content, actions);
@@ -1041,6 +1047,67 @@ async function saveApertura(existingEntry){
     toast('Saldos de apertura guardados','ok');
     render();
   }catch(e){ toast('Error guardando saldos de apertura: '+e.message,'err'); }
+}
+
+// ---------- Libros de IVA (Compras / Ventas) ----------
+async function loadDteConItems(filterFn){
+  const docs = await pg(`dte_documents?select=*&tenant_id=eq.${activeTenantId}&order=fecha_emision.asc`);
+  const filtered = docs.filter(filterFn);
+  if(!filtered.length) return [];
+  const ids = filtered.map(d=>d.id);
+  const items = await pg(`dte_items?select=dte_id,venta_gravada,venta_exenta&dte_id=in.(${ids.join(',')})`);
+  const sums = {};
+  items.forEach(it=>{
+    if(!sums[it.dte_id]) sums[it.dte_id] = {gravada:0, exenta:0};
+    sums[it.dte_id].gravada += Number(it.venta_gravada)||0;
+    sums[it.dte_id].exenta += Number(it.venta_exenta)||0;
+  });
+  return filtered.map(d=>{
+    const s = sums[d.id] || {gravada:0, exenta:0};
+    const iva = s.gravada * 0.13;
+    return { ...d, gravada: s.gravada, exenta: s.exenta, iva, total: s.gravada + s.exenta + iva };
+  });
+}
+function currentTenantNit(){
+  const t = tenants.find(x=>x.id===activeTenantId);
+  return t ? t.nit : null;
+}
+
+async function renderLibroCompras(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const nit = currentTenantNit();
+  const rows = await loadDteConItems(d => d.nit_receptor === nit);
+  if(!rows.length){ content.innerHTML = '<div class="empty">Sin compras registradas para este cliente (documentos donde su NIT aparece como receptor).</div>'; return; }
+  let tE=0,tG=0,tI=0,tT=0;
+  let html = `<p class="hint">Se listan los documentos DTE donde el NIT de este cliente (${nit||'—'}) aparece como receptor.</p>
+    <table class="grid"><thead><tr><th>Fecha</th><th>N° Documento</th><th>Proveedor</th><th>NIT/NRC</th><th>Exentas</th><th>Gravadas</th><th>IVA Crédito Fiscal</th><th>Total</th></tr></thead><tbody>`;
+  rows.forEach(d=>{
+    tE+=d.exenta; tG+=d.gravada; tI+=d.iva; tT+=d.total;
+    html += `<tr><td class="mono">${d.fecha_emision}</td><td class="mono">${d.numero_control||''}</td><td>${d.nombre_emisor||''}</td><td class="mono">${d.nit_emisor||''}</td><td class="mono">$${d.exenta.toFixed(2)}</td><td class="mono">$${d.gravada.toFixed(2)}</td><td class="mono">$${d.iva.toFixed(2)}</td><td class="mono">$${d.total.toFixed(2)}</td></tr>`;
+  });
+  html += `<tr><td colspan="4"><strong>Totales</strong></td><td class="mono"><strong>$${tE.toFixed(2)}</strong></td><td class="mono"><strong>$${tG.toFixed(2)}</strong></td><td class="mono"><strong>$${tI.toFixed(2)}</strong></td><td class="mono"><strong>$${tT.toFixed(2)}</strong></td></tr>`;
+  html += '</tbody></table>';
+  content.innerHTML = html;
+}
+
+async function renderLibroVentas(content, actions, tipoDte){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const nit = currentTenantNit();
+  const rows = await loadDteConItems(d => d.nit_emisor === nit && d.tipo_dte === tipoDte);
+  const esConsumidorFinal = tipoDte === '01';
+  if(!rows.length){ content.innerHTML = `<div class="empty">Sin ventas ${esConsumidorFinal?'a consumidor final':'con crédito fiscal'} registradas para este cliente (documentos emitidos con su NIT: ${nit||'—'}).</div>`; return; }
+  let tE=0,tG=0,tI=0,tT=0;
+  const clienteHeader = esConsumidorFinal ? 'Cliente' : 'Cliente';
+  let html = `<p class="hint">Se listan los documentos DTE tipo ${tipoDte} (${esConsumidorFinal?'Factura':'Comprobante de Crédito Fiscal'}) emitidos por este cliente (NIT ${nit||'—'}).</p>
+    <table class="grid"><thead><tr><th>Fecha</th><th>N° Documento</th><th>${clienteHeader}</th>${esConsumidorFinal?'':'<th>NIT/NRC</th>'}<th>Exentas</th><th>Gravadas</th><th>IVA ${esConsumidorFinal?'(incluido)':'Débito Fiscal'}</th><th>Total</th></tr></thead><tbody>`;
+  rows.forEach(d=>{
+    tE+=d.exenta; tG+=d.gravada; tI+=d.iva; tT+=d.total;
+    html += `<tr><td class="mono">${d.fecha_emision}</td><td class="mono">${d.numero_control||''}</td><td>${d.nombre_receptor||'Consumidor final'}</td>${esConsumidorFinal?'':`<td class="mono">${d.nit_receptor||''}</td>`}<td class="mono">$${d.exenta.toFixed(2)}</td><td class="mono">$${d.gravada.toFixed(2)}</td><td class="mono">$${d.iva.toFixed(2)}</td><td class="mono">$${d.total.toFixed(2)}</td></tr>`;
+  });
+  html += `<tr><td colspan="${esConsumidorFinal?'2':'3'}"><strong>Totales</strong></td><td colspan="${esConsumidorFinal?'1':'1'}"></td><td class="mono"><strong>$${tE.toFixed(2)}</strong></td><td class="mono"><strong>$${tG.toFixed(2)}</strong></td><td class="mono"><strong>$${tI.toFixed(2)}</strong></td><td class="mono"><strong>$${tT.toFixed(2)}</strong></td></tr>`;
+  html += '</tbody></table>';
+  if(esConsumidorFinal) html += '<p class="hint">Nota: el formato oficial del libro de consumidor final agrupa por rango de correlativos diarios. Esta vista lista documento por documento; pídeme el resumen diario si lo necesitas así para el reporte a Hacienda.</p>';
+  content.innerHTML = html;
 }
 
 // ---------- Plan de cuentas ----------
