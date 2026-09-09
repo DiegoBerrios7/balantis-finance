@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Balantis Finance</title>
+<style>
+  :root{
+    --bg:#10141A; --panel:#171D26; --panel-2:#1D2531; --line:#2A3341;
+    --text:#E7EBF0; --text-dim:#8A96A6; --accent:#3FB68A; --accent-dim:#2C7F62;
+    --danger:#E0645A; --warn:#D8A657;
+    --mono:'IBM Plex Mono','SF Mono',Consolas,monospace; --sans:'Inter',-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;display:flex;height:100vh;overflow:hidden;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px;}
+
+  #loginscreen{flex:1;display:flex;align-items:center;justify-content:center;}
+  #loginbox{width:340px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:28px;}
+  #loginbox h2{margin:0 0 4px;font-size:17px;}
+  #loginbox .sub{color:var(--text-dim);font-size:12.5px;margin-bottom:20px;font-family:var(--mono);}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;color:var(--text-dim);margin-bottom:6px;}
+  .field input, .field select, .field textarea{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:9px 11px;border-radius:6px;font-size:13.5px;font-family:var(--sans);
+  }
+  .field textarea{font-family:var(--mono);min-height:70px;resize:vertical;}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent-dim);}
+  #login-error{color:var(--danger);font-size:12.5px;margin-top:10px;display:none;}
+
+  #app{display:none;flex:1;min-width:0;}
+  #sidebar{width:220px;min-width:220px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;}
+  #brand{padding:18px 18px 12px;border-bottom:1px solid var(--line);}
+  #brand .name{font-size:15px;font-weight:600;}
+  #brand .sub{font-size:11px;color:var(--text-dim);margin-top:2px;font-family:var(--mono);}
+  #tenantpicker{padding:12px 14px;border-bottom:1px solid var(--line);}
+  #tenantpicker label{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);display:block;margin-bottom:6px;}
+  #tenantpicker select{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:7px 8px;border-radius:6px;font-size:12.5px;}
+  #nav{padding:10px;display:flex;flex-direction:column;gap:2px;flex:1;overflow-y:auto;}
+  .navbtn{background:none;border:none;color:var(--text-dim);text-align:left;padding:9px 10px;border-radius:6px;font-size:13.5px;cursor:pointer;font-family:var(--sans);}
+  .navbtn:hover{background:var(--panel-2);color:var(--text);}
+  .navbtn.active{background:var(--panel-2);color:var(--accent);font-weight:600;}
+  #userbar{padding:12px 14px;border-top:1px solid var(--line);font-size:12px;display:flex;justify-content:space-between;align-items:center;color:var(--text-dim);gap:8px;}
+  #userbar .who{display:flex;flex-direction:column;gap:2px;overflow:hidden;}
+  #userbar .who .nm{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;}
+  #userbar .rolepill{font-family:var(--mono);font-size:10px;text-transform:uppercase;color:var(--accent);background:rgba(63,182,138,.12);padding:1px 6px;border-radius:4px;width:fit-content;}
+  #userbar .btns{display:flex;flex-direction:column;gap:4px;align-items:flex-end;}
+  #userbar button{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:11.5px;padding:0;}
+  #userbar button:hover{color:var(--accent);}
+  #userbar #logout-btn:hover{color:var(--danger);}
+
+  #main{flex:1;display:flex;flex-direction:column;min-width:0;}
+  #topbar{padding:16px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}
+  #topbar h1{font-size:16px;margin:0;font-weight:600;}
+  #topbar .actions{display:flex;gap:8px;}
+  #content{flex:1;overflow:auto;padding:20px 24px;}
+
+  button.btn{background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:7px 13px;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--sans);}
+  button.btn:hover{border-color:var(--accent-dim);}
+  button.btn.primary{background:var(--accent);border-color:var(--accent);color:#0A1410;font-weight:600;}
+  button.btn.primary:hover{background:#4FD1AE;}
+  button.btn.danger{border-color:var(--danger);color:var(--danger);}
+  button.btn.danger:hover{background:rgba(224,101,90,.1);}
+  button.btn:disabled{opacity:.4;cursor:default;}
+  button.btn.small{padding:4px 9px;font-size:12px;}
+
+  table.grid{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.grid th{text-align:left;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--line);color:var(--text-dim);font-weight:500;white-space:nowrap;position:sticky;top:0;}
+  table.grid td{padding:7px 10px;border-bottom:1px solid var(--line);}
+  table.grid tr:hover td{background:var(--panel-2);}
+  .mono{font-family:var(--mono);}
+  .pill{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:4px;background:var(--panel-2);color:var(--text-dim);}
+  .pill.pendiente{color:var(--warn);}
+  .pill.clasificado{color:var(--accent);}
+  .pill.contabilizado{color:var(--accent);background:rgba(63,182,138,.12);}
+  .pill.excepcion{color:var(--danger);}
+  .pill.abierta{color:var(--danger);}
+  .pill.resuelta{color:var(--accent);}
+
+  .cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;}
+  .card h3{margin:0 0 4px;font-size:14.5px;}
+  .card .meta{color:var(--text-dim);font-size:12px;font-family:var(--mono);}
+  .card .row{display:flex;justify-content:space-between;font-size:12.5px;margin-top:10px;}
+
+  .kv{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:18px;}
+  .kv .item{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px;min-width:130px;}
+  .kv .item .lbl{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;}
+  .kv .item .val{font-size:18px;font-weight:600;margin-top:4px;}
+
+  #modalbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);align-items:center;justify-content:center;z-index:50;}
+  #modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:600px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;}
+  #modal h3{margin:0 0 16px;font-size:15px;}
+  .modalactions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  .lineRow{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;}
+  .lineRow select, .lineRow input{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12.5px;}
+  .balancebar{display:flex;justify-content:space-between;padding:10px 0;font-family:var(--mono);font-size:13px;border-top:1px solid var(--line);margin-top:6px;}
+  .balancebar.ok{color:var(--accent);}
+  .balancebar.bad{color:var(--danger);}
+
+  .empty{color:var(--text-dim);font-size:13px;padding:40px 0;text-align:center;}
+  .hint{font-size:12px;color:var(--text-dim);line-height:1.5;margin-top:4px;}
+  #toast{position:fixed;bottom:20px;right:20px;background:var(--panel-2);border:1px solid var(--line);padding:11px 16px;border-radius:8px;font-size:13px;display:none;z-index:60;max-width:360px;}
+  #toast.err{border-color:var(--danger);color:var(--danger);}
+  #toast.ok{border-color:var(--accent);color:var(--accent);}
+  input[type=file]{font-size:12.5px;color:var(--text-dim);}
+</style>
+</head>
+<body>
+
+<div id="loginscreen">
+  <div id="loginbox">
+    <h2>Balantis Finance</h2>
+    <div class="sub">Inicia sesión con tu cuenta</div>
+    <div class="field"><label>Correo</label><input id="login-email" type="email" autocomplete="username"></div>
+    <div class="field"><label>Contraseña</label><input id="login-pass" type="password" autocomplete="current-password"></div>
+    <button class="btn primary" id="login-btn" style="width:100%;">Entrar</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div id="sidebar">
+    <div id="brand"><div class="name">Balantis Finance</div><div class="sub">panel de trabajo</div></div>
+    <div id="tenantpicker">
+      <label>Cliente activo</label>
+      <select id="tenant-select"></select>
+    </div>
+    <div id="nav">
+      <button class="navbtn active" data-view="dtes">Documentos DTE</button>
+      <button class="navbtn" data-view="excepciones">Excepciones</button>
+      <button class="navbtn" data-view="inventario">Inventario</button>
+      <button class="navbtn" data-view="asientos">Asientos manuales</button>
+      <button class="navbtn" data-view="diario">Libro Diario</button>
+      <button class="navbtn" data-view="mayor">Libro Mayor</button>
+      <button class="navbtn" data-view="balanza">Balanza de Comprobación</button>
+      <button class="navbtn" data-view="estados">Estados Financieros</button>
+      <button class="navbtn" data-view="apertura">Saldos de apertura</button>
+      <button class="navbtn" data-view="cuentas">Plan de cuentas</button>
+      <button class="navbtn" data-view="clientes">Clientes</button>
+    </div>
+    <div id="userbar">
+      <div class="who"><span class="nm" id="userbar-name">—</span><span class="rolepill" id="userbar-role">—</span></div>
+      <div class="btns">
+        <button id="change-pass-btn">Cambiar clave</button>
+        <button id="logout-btn">Salir</button>
+      </div>
+    </div>
+  </div>
+  <div id="main">
+    <div id="topbar"><h1 id="viewtitle">Documentos DTE</h1><div class="actions" id="topactions"></div></div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<div id="modalbg"><div id="modal"></div></div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://vmxawkdfsdrxliqyweho.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteGF3a2Rmc2RyeGxpcXl3ZWhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNjA3OTIsImV4cCI6MjEwMTYzNjc5Mn0.77rBlAsqtTQ5dvQqV4khSE7Cxqr4Ai5tVs-9PD1jwqs';
+const LS_SESSION = 'mccont_session';
+
+let session = JSON.parse(localStorage.getItem(LS_SESSION) || 'null');
+let profile = null;
+let tenants = [];
+let activeTenantId = null;
+let accounts = []; // cuentas del tenant activo (movimiento)
+let view = 'dtes';
+
+function toast(msg,type){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=type||''; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',3800);
+}
+
+// ---------- Auth ----------
+async function login(email,password){
+  const res = await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{
+    method:'POST', headers:{'apikey':SUPABASE_ANON_KEY,'Content-Type':'application/json'},
+    body: JSON.stringify({email,password})
+  });
+  const data = await res.json();
+  if(!res.ok) throw new Error(data.error_description || data.msg || 'Credenciales inválidas');
+  session = data;
+  localStorage.setItem(LS_SESSION, JSON.stringify(session));
+}
+function logout(){ localStorage.removeItem(LS_SESSION); location.reload(); }
+
+async function loadProfile(){
+  const rows = await pg(`profiles?select=id,role,full_name&id=eq.${session.user.id}`);
+  profile = rows[0] || null;
+}
+
+async function pg(path,opts){
+  opts = opts || {};
+  const headers = Object.assign({
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + (session?session.access_token:SUPABASE_ANON_KEY),
+    'Content-Type': 'application/json'
+  }, opts.headers||{});
+  const res = await fetch(SUPABASE_URL+'/rest/v1/'+path, Object.assign({},opts,{headers}));
+  if(!res.ok){ const body = await res.text(); throw new Error(body || res.statusText); }
+  const ct = res.headers.get('content-type')||'';
+  if(ct.includes('application/json')) return res.json();
+  return res.text();
+}
+async function execSql(query){
+  const out = await pg('rpc/admin_exec_sql', {method:'POST', body: JSON.stringify({query})});
+  if(out && out.error) throw new Error(out.error);
+  return out;
+}
+
+document.getElementById('login-btn').onclick = async ()=>{
+  const email=document.getElementById('login-email').value.trim();
+  const pass=document.getElementById('login-pass').value;
+  const errEl=document.getElementById('login-error');
+  errEl.style.display='none';
+  try{ await login(email,pass); await boot(); }
+  catch(e){ errEl.textContent=e.message; errEl.style.display='block'; }
+};
+document.getElementById('login-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('login-btn').click(); });
+document.getElementById('logout-btn').onclick = logout;
+document.getElementById('change-pass-btn').onclick = openChangePasswordModal;
+
+async function boot(){
+  if(!session){ showLogin(); return; }
+  try{
+    await loadProfile();
+    if(!profile) throw new Error('Tu usuario no tiene perfil asignado.');
+    await loadTenants();
+    showApp();
+  }catch(e){ toast(e.message,'err'); logout(); }
+}
+function showLogin(){ document.getElementById('loginscreen').style.display='flex'; document.getElementById('app').style.display='none'; }
+function showApp(){
+  document.getElementById('loginscreen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('userbar-name').textContent = profile.full_name || session.user.email;
+  document.getElementById('userbar-role').textContent = profile.role;
+  setView('dtes');
+}
+
+// ---------- Tenants ----------
+async function loadTenants(){
+  tenants = await pg('tenants?select=*&order=nombre.asc');
+  const sel = document.getElementById('tenant-select');
+  sel.innerHTML = tenants.map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('') || '<option value="">Sin clientes aún</option>';
+  activeTenantId = tenants.length ? tenants[0].id : null;
+  sel.value = activeTenantId || '';
+  sel.onchange = async ()=>{ activeTenantId = sel.value; await loadAccounts(); render(); };
+  await loadAccounts();
+}
+async function loadAccounts(){
+  if(!activeTenantId){ accounts=[]; return; }
+  accounts = await pg(`tenant_accounts?select=id,codigo,nombre,tipo_niif,naturaleza&tenant_id=eq.${activeTenantId}&es_movimiento=eq.true&order=codigo.asc`);
+}
+function acctOptions(selectedId){
+  return '<option value="">— sin asignar —</option>' + accounts.map(a=>
+    `<option value="${a.id}" ${a.id===selectedId?'selected':''}>${a.codigo} · ${a.nombre}</option>`).join('');
+}
+
+function setView(v){
+  view = v;
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  const titles = {dtes:'Documentos DTE', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', clientes:'Clientes'};
+  document.getElementById('viewtitle').textContent = titles[v];
+  render();
+}
+document.querySelectorAll('.navbtn').forEach(b=> b.onclick = ()=> setView(b.dataset.view));
+
+function requireTenant(){
+  if(!activeTenantId){
+    document.getElementById('content').innerHTML = '<div class="empty">Crea o selecciona un cliente primero, en la sección "Clientes".</div>';
+    return false;
+  }
+  return true;
+}
+
+async function render(){
+  const content = document.getElementById('content');
+  const actions = document.getElementById('topactions');
+  actions.innerHTML = '';
+  if(view==='clientes') await renderClientes(content, actions);
+  else if(!requireTenant()) return;
+  else if(view==='dtes') await renderDtes(content, actions);
+  else if(view==='excepciones') await renderExcepciones(content, actions);
+  else if(view==='inventario') await renderInventario(content, actions);
+  else if(view==='asientos') await renderAsientos(content, actions);
+  else if(view==='diario') await renderDiario(content, actions);
+  else if(view==='mayor') await renderMayor(content, actions);
+  else if(view==='balanza') await renderBalanza(content, actions);
+  else if(view==='estados') await renderEstados(content, actions);
+  else if(view==='apertura') await renderApertura(content, actions);
+  else if(view==='cuentas') await renderCuentas(content, actions);
+  addRefreshButton(actions);
+}
+
+function addRefreshButton(actions){
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.textContent = 'Actualizar';
+  btn.style.marginRight = 'auto';
+  btn.onclick = render;
+  actions.insertBefore(btn, actions.firstChild);
+}
+
+// Auto-actualización cada 25s mientras no haya un modal abierto (para no interrumpir lo que se está escribiendo)
+setInterval(()=>{
+  const appVisible = document.getElementById('app').style.display === 'flex';
+  const modalOpen = document.getElementById('modalbg').style.display === 'flex';
+  if(appVisible && !modalOpen) render();
+}, 25000);
+
+// ---------- Clientes ----------
+async function renderClientes(content, actions){
+  actions.innerHTML = `<button class="btn primary" id="new-tenant-btn">+ Nuevo cliente</button>`;
+  document.getElementById('new-tenant-btn').onclick = openTenantModal;
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const fp = await pg('fiscal_profiles?select=tenant_id,regimen_iva,giro');
+  const fpMap = Object.fromEntries(fp.map(f=>[f.tenant_id,f]));
+  if(!tenants.length){ content.innerHTML = '<div class="empty">Aún no tienes clientes. Crea el primero.</div>'; return; }
+  content.innerHTML = `<div class="cardgrid">` + tenants.map(t=>{
+    const f = fpMap[t.id] || {};
+    return `<div class="card">
+      <h3>${t.nombre}</h3>
+      <div class="meta">${t.nit} · ${t.tipo_persona}</div>
+      <div class="row"><span>Régimen IVA</span><span>${f.regimen_iva||'—'}</span></div>
+      <div class="row"><span>Giro</span><span>${f.giro||'—'}</span></div>
+      <div class="row"><span>Estado</span><span class="pill ${t.activo?'clasificado':'excepcion'}">${t.activo?'activo':'inactivo'}</span></div>
+      <div style="margin-top:12px;"><button class="btn small" data-id="${t.id}" data-name="${t.nombre}">Cargar plan de cuentas</button></div>
+    </div>`;
+  }).join('') + '</div>';
+  content.querySelectorAll('button[data-id]').forEach(b=>{
+    b.onclick = () => seedAccounts(b.dataset.id, b.dataset.name);
+  });
+}
+
+function openTenantModal(){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Nuevo cliente</h3>
+    <div class="field"><label>Nombre</label><input id="t-nombre"></div>
+    <div class="field"><label>NIT</label><input id="t-nit"></div>
+    <div class="field"><label>Tipo de persona</label>
+      <select id="t-tipo"><option value="natural">Natural</option><option value="juridica">Jurídica</option></select>
+    </div>
+    <div class="field"><label>Slug (identificador corto, sin espacios)</label><input id="t-slug"></div>
+    <div class="field"><label>Régimen IVA</label>
+      <select id="t-regimen"><option value="contribuyente">Contribuyente</option><option value="no_inscrito">No inscrito</option></select>
+    </div>
+    <div class="field"><label>NRC (si es contribuyente)</label><input id="t-nrc"></div>
+    <div class="field"><label>Giro</label><input id="t-giro"></div>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save">Crear cliente</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-save').onclick = saveTenant;
+}
+async function saveTenant(){
+  const nombre = document.getElementById('t-nombre').value.trim();
+  const nit = document.getElementById('t-nit').value.trim();
+  const tipo_persona = document.getElementById('t-tipo').value;
+  const slug = document.getElementById('t-slug').value.trim();
+  const regimen_iva = document.getElementById('t-regimen').value;
+  const nrc = document.getElementById('t-nrc').value.trim();
+  const giro = document.getElementById('t-giro').value.trim();
+  if(!nombre || !nit || !slug){ toast('Nombre, NIT y slug son obligatorios','err'); return; }
+  try{
+    const created = await pg('tenants', {method:'POST', body: JSON.stringify({nombre,nit,tipo_persona,slug}), headers:{'Prefer':'return=representation'}});
+    const tenantId = created[0].id;
+    await pg('fiscal_profiles', {method:'POST', body: JSON.stringify({tenant_id:tenantId, regimen_iva, nrc: nrc||null, giro}), headers:{'Prefer':'return=minimal'}});
+    toast('Cliente creado','ok');
+    closeModal();
+    await loadTenants();
+    document.getElementById('tenant-select').value = tenantId;
+    activeTenantId = tenantId;
+    await loadAccounts();
+    setView('clientes');
+  }catch(e){ toast('Error creando cliente: '+e.message,'err'); }
+}
+
+async function seedAccounts(tenantId, name){
+  const templates = await pg('coa_templates?select=id,nombre&order=nombre.asc');
+  if(!templates.length){ toast('No hay plantillas de catálogo disponibles','err'); return; }
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Cargar plan de cuentas — ${name}</h3>
+    <div class="field"><label>Plantilla</label>
+      <select id="tpl-select">${templates.map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('')}</select>
+    </div>
+    <p class="hint">Esto solo se puede hacer una vez por cliente.</p>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save">Cargar</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-save').onclick = async ()=>{
+    try{
+      const templateId = document.getElementById('tpl-select').value;
+      const out = await pg('rpc/admin_seed_tenant_accounts', {method:'POST', body: JSON.stringify({p_tenant_id: tenantId, p_template_id: templateId})});
+      if(out.error){ toast(out.error,'err'); return; }
+      toast(`Plan de cuentas cargado (${out.cuentas_creadas} cuentas)`,'ok');
+      closeModal();
+      if(tenantId===activeTenantId) await loadAccounts();
+    }catch(e){ toast('Error: '+e.message,'err'); }
+  };
+}
+
+// ---------- DTE ----------
+async function renderDtes(content, actions){
+  actions.innerHTML = `
+    <input type="file" id="dte-file" accept="application/json" style="display:none;">
+    <button class="btn primary" id="upload-dte-btn">+ Subir DTE (JSON)</button>
+  `;
+  document.getElementById('upload-dte-btn').onclick = ()=> document.getElementById('dte-file').click();
+  document.getElementById('dte-file').onchange = handleDteFile;
+
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const docs = await pg(`dte_documents?select=*&tenant_id=eq.${activeTenantId}&order=fecha_emision.desc`);
+  if(!docs.length){ content.innerHTML = '<div class="empty">Sin documentos DTE para este cliente. Sube el primero.</div>'; return; }
+  content.innerHTML = `<table class="grid"><thead><tr>
+    <th>Fecha</th><th>Tipo</th><th>N° control</th><th>Contraparte</th><th>Monto</th><th>Estado</th><th></th>
+  </tr></thead><tbody>` + docs.map(d=>`
+    <tr>
+      <td class="mono">${d.fecha_emision||''}</td>
+      <td class="mono">${d.tipo_dte||''}</td>
+      <td class="mono">${d.numero_control||''}</td>
+      <td>${d.nombre_receptor && d.nombre_receptor!==d.nombre_emisor ? d.nombre_receptor : (d.nombre_emisor||'')}</td>
+      <td class="mono">$${Number(d.monto_total||0).toFixed(2)}</td>
+      <td><span class="pill ${d.estado}">${d.estado}</span></td>
+      <td><button class="btn small" data-id="${d.id}">Ver / clasificar</button></td>
+    </tr>`).join('') + '</tbody></table>';
+  content.querySelectorAll('button[data-id]').forEach(b=> b.onclick = ()=> openDteDetail(b.dataset.id));
+}
+
+function handleDteFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let json;
+    try{ json = JSON.parse(reader.result); }
+    catch(err){ toast('El archivo no es un JSON válido','err'); return; }
+    openDteImportModal(json);
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function openDteImportModal(json){
+  const ident = json.identificacion || {};
+  const emisor = json.emisor || {};
+  const receptor = json.receptor || {};
+  const resumen = json.resumen || {};
+  const items = json.cuerpoDocumento || [];
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Confirmar datos del DTE</h3>
+    <p class="hint">Se extrajeron estos datos automáticamente del JSON. Revísalos y ajusta lo que haga falta.</p>
+    <div class="field"><label>Código de generación</label><input id="d-cg" value="${ident.codigoGeneracion||''}"></div>
+    <div class="field"><label>Número de control</label><input id="d-nc" value="${ident.numeroControl||''}"></div>
+    <div class="field"><label>Tipo DTE</label><input id="d-tipo" value="${ident.tipoDte||''}"></div>
+    <div class="field"><label>Ambiente</label><input id="d-amb" value="${ident.ambiente||'01'}"></div>
+    <div class="field"><label>Fecha emisión (AAAA-MM-DD)</label><input id="d-fecha" value="${ident.fecEmi||''}"></div>
+    <div class="field"><label>Hora emisión</label><input id="d-hora" value="${ident.horEmi||''}"></div>
+    <div class="field"><label>NIT emisor</label><input id="d-nite" value="${emisor.nit||''}"></div>
+    <div class="field"><label>Nombre emisor</label><input id="d-nome" value="${emisor.nombre||''}"></div>
+    <div class="field"><label>NIT receptor</label><input id="d-nitr" value="${receptor.nit||''}"></div>
+    <div class="field"><label>Nombre receptor</label><input id="d-nomr" value="${receptor.nombre||''}"></div>
+    <div class="field"><label>Monto total</label><input id="d-monto" value="${resumen.montoTotalOperacion||0}"></div>
+    <div class="field"><label>Total a pagar</label><input id="d-pagar" value="${resumen.totalPagar||resumen.montoTotalOperacion||0}"></div>
+    <p class="hint">${items.length} ítem(s) detectado(s) en el documento.</p>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save">Guardar documento</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-save').onclick = () => saveDte(json, items);
+}
+
+async function saveDte(rawJson, items){
+  const payload = {
+    tenant_id: activeTenantId,
+    codigo_generacion: document.getElementById('d-cg').value.trim(),
+    numero_control: document.getElementById('d-nc').value.trim(),
+    tipo_dte: document.getElementById('d-tipo').value.trim(),
+    ambiente: document.getElementById('d-amb').value.trim(),
+    fecha_emision: document.getElementById('d-fecha').value.trim(),
+    hora_emision: document.getElementById('d-hora').value.trim() || null,
+    tipo_operacion: 1,
+    nit_emisor: document.getElementById('d-nite').value.trim(),
+    nombre_emisor: document.getElementById('d-nome').value.trim(),
+    nit_receptor: document.getElementById('d-nitr').value.trim() || null,
+    nombre_receptor: document.getElementById('d-nomr').value.trim(),
+    contraparte_nit: document.getElementById('d-nite').value.trim(),
+    monto_total: parseFloat(document.getElementById('d-monto').value) || 0,
+    total_pagar: parseFloat(document.getElementById('d-pagar').value) || 0,
+    raw_json: rawJson,
+    estado: 'pendiente'
+  };
+  try{
+    const created = await pg('dte_documents', {method:'POST', body: JSON.stringify(payload), headers:{'Prefer':'return=representation'}});
+    const dteId = created[0].id;
+    if(items.length){
+      const itemRows = items.map(it => ({
+        dte_id: dteId,
+        num_item: it.numItem || 1,
+        codigo_cat: it.codigo || null,
+        descripcion: it.descripcion || '',
+        cantidad: it.cantidad || 1,
+        precio_uni: it.precioUni || 0,
+        venta_gravada: it.ventaGravada || 0,
+        venta_exenta: it.ventaExenta || 0
+      }));
+      await pg('dte_items', {method:'POST', body: JSON.stringify(itemRows), headers:{'Prefer':'return=minimal'}});
+    }
+    toast('Documento DTE guardado','ok');
+    closeModal();
+    render();
+  }catch(e){ toast('Error guardando DTE: '+e.message,'err'); }
+}
+
+async function openDteDetail(dteId){
+  const docs = await pg(`dte_documents?select=*&id=eq.${dteId}`);
+  const doc = docs[0];
+  const items = await pg(`dte_items?select=*&dte_id=eq.${dteId}&order=num_item.asc`);
+  const invItems = await pg(`inventory_items?select=id,codigo,nombre,existencia_actual&tenant_id=eq.${activeTenantId}&order=nombre.asc`);
+  const invOptions = (selectedId) => '<option value="">— no es de inventario —</option>' + invItems.map(p=>
+    `<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.nombre} (existencia: ${Number(p.existencia_actual).toFixed(2)})</option>`).join('');
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>${doc.nombre_emisor} · ${doc.numero_control||''}</h3>
+    <p class="hint">${doc.fecha_emision} · $${Number(doc.monto_total).toFixed(2)} · <span class="pill ${doc.estado}">${doc.estado}</span></p>
+    <div id="dte-items-list"></div>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cerrar</button>
+      <button class="btn primary" id="mark-done-btn">Marcar como contabilizado</button>
+    </div>`;
+  const list = document.getElementById('dte-items-list');
+  list.innerHTML = items.map(it => `
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;">
+        <strong style="font-size:13px;">${it.descripcion}</strong>
+        <span class="mono">$${Number(it.venta_gravada+it.venta_exenta||0).toFixed(2)}</span>
+      </div>
+      <div class="field" style="margin-top:8px;margin-bottom:6px;">
+        <label>Cuenta contable</label>
+        <select data-item="${it.id}" class="dte-acct-select">${acctOptions(it.cuenta_id)}</select>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Producto de inventario ${it.inventario_descargado?'<span class="pill clasificado">ya descargado</span>':''}</label>
+        <select data-item="${it.id}" class="dte-prod-select" ${it.inventario_descargado?'disabled':''}>${invOptions(it.producto_id)}</select>
+      </div>
+    </div>`).join('') || '<p class="hint">Este documento no tiene ítems.</p>';
+  list.querySelectorAll('.dte-acct-select').forEach(sel=>{
+    sel.onchange = async ()=>{
+      try{
+        await pg(`dte_items?id=eq.${sel.dataset.item}`, {method:'PATCH', body: JSON.stringify({cuenta_id: sel.value || null, metodo_clasificacion:'manual'}), headers:{'Prefer':'return=minimal'}});
+        toast('Ítem clasificado','ok');
+      }catch(e){ toast('Error: '+e.message,'err'); }
+    };
+  });
+  list.querySelectorAll('.dte-prod-select').forEach(sel=>{
+    sel.onchange = async ()=>{
+      if(!sel.value) return;
+      try{
+        await pg(`dte_items?id=eq.${sel.dataset.item}`, {method:'PATCH', body: JSON.stringify({producto_id: sel.value}), headers:{'Prefer':'return=minimal'}});
+        const out = await pg('rpc/registrar_salida_inventario', {method:'POST', body: JSON.stringify({p_dte_item_id: sel.dataset.item})});
+        if(out.error){ toast(out.error,'err'); return; }
+        toast(`Inventario descargado. Nueva existencia: ${Number(out.nueva_existencia).toFixed(2)}${out.asiento_generado?' · asiento contable generado':''}`,'ok');
+        openDteDetail(dteId);
+      }catch(e){ toast('Error: '+e.message,'err'); }
+    };
+  });
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('mark-done-btn').onclick = async ()=>{
+    try{
+      await pg(`dte_documents?id=eq.${dteId}`, {method:'PATCH', body: JSON.stringify({estado:'contabilizado'}), headers:{'Prefer':'return=minimal'}});
+      toast('Documento marcado como contabilizado','ok');
+      closeModal(); render();
+    }catch(e){ toast('Error: '+e.message,'err'); }
+  };
+}
+
+// ---------- Excepciones ----------
+async function renderExcepciones(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const rows = await pg(`exception_queue?select=*&tenant_id=eq.${activeTenantId}&estado=eq.abierta&order=created_at.desc`);
+  if(!rows.length){ content.innerHTML = '<div class="empty">Sin excepciones abiertas para este cliente.</div>'; return; }
+  content.innerHTML = `<table class="grid"><thead><tr><th>Motivo</th><th>Detalle</th><th>Confianza</th><th></th></tr></thead><tbody>` +
+    rows.map(r=>`<tr>
+      <td>${r.motivo}</td><td>${r.detalle||''}</td><td class="mono">${r.score_confianza||'—'}</td>
+      <td><button class="btn small" data-id="${r.id}" data-dte="${r.dte_id}">Resolver</button></td>
+    </tr>`).join('') + '</tbody></table>';
+  content.querySelectorAll('button[data-id]').forEach(b=>{
+    b.onclick = async ()=>{
+      if(b.dataset.dte) await openDteDetail(b.dataset.dte);
+      try{
+        await pg(`exception_queue?id=eq.${b.dataset.id}`, {method:'PATCH', body: JSON.stringify({estado:'resuelta', resuelto_por: profile.full_name||session.user.email, resuelto_at: new Date().toISOString()}), headers:{'Prefer':'return=minimal'}});
+        toast('Excepción marcada como resuelta','ok');
+        render();
+      }catch(e){ toast('Error: '+e.message,'err'); }
+    };
+  });
+}
+
+// ---------- Asientos manuales ----------
+async function renderAsientos(content, actions){
+  actions.innerHTML = `<button class="btn primary" id="new-entry-btn">+ Nuevo asiento</button>`;
+  document.getElementById('new-entry-btn').onclick = openEntryModal;
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const entries = await pg(`journal_entries?select=*&tenant_id=eq.${activeTenantId}&order=fecha.desc`);
+  if(!entries.length){ content.innerHTML = '<div class="empty">Sin asientos registrados para este cliente.</div>'; return; }
+  const lines = await pg(`journal_lines?select=entry_id,debe,haber&entry_id=in.(${entries.map(e=>e.id).join(',')})`);
+  const totals = {};
+  lines.forEach(l=>{ totals[l.entry_id] = totals[l.entry_id] || {debe:0,haber:0}; totals[l.entry_id].debe += Number(l.debe); totals[l.entry_id].haber += Number(l.haber); });
+  content.innerHTML = `<table class="grid"><thead><tr><th>Fecha</th><th>Concepto</th><th>Origen</th><th>Debe</th><th>Haber</th><th>Estado</th></tr></thead><tbody>` +
+    entries.map(e=>{
+      const t = totals[e.id] || {debe:0,haber:0};
+      return `<tr><td class="mono">${e.fecha}</td><td>${e.concepto||''}</td><td>${e.origen}</td><td class="mono">$${t.debe.toFixed(2)}</td><td class="mono">$${t.haber.toFixed(2)}</td><td><span class="pill ${e.estado==='confirmado'?'clasificado':'excepcion'}">${e.estado}</span></td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+
+function openEntryModal(){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Nuevo asiento manual</h3>
+    <div class="field"><label>Fecha</label><input id="e-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Concepto</label><input id="e-concepto" type="text" placeholder="Ej: Pago de alquiler de local, mes de septiembre"></div>
+    <div id="lines-container"></div>
+    <button class="btn small" id="add-line-btn">+ Agregar línea</button>
+    <div class="balancebar" id="balance-bar">Debe: $0.00 · Haber: $0.00</div>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save" disabled>Guardar asiento</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('add-line-btn').onclick = addLineRow;
+  document.getElementById('modal-save').onclick = saveEntry;
+  addLineRow(); addLineRow();
+}
+function addLineRow(){
+  const c = document.getElementById('lines-container');
+  const row = document.createElement('div');
+  row.className = 'lineRow';
+  row.innerHTML = `
+    <select class="line-acct">${acctOptions(null)}</select>
+    <input class="line-debe" type="number" step="0.01" placeholder="Debe" value="0">
+    <input class="line-haber" type="number" step="0.01" placeholder="Haber" value="0">
+    <input class="line-tercero" type="text" placeholder="NIT tercero (opcional)">
+    <button class="btn small danger" type="button">×</button>`;
+  row.querySelector('button').onclick = ()=>{ row.remove(); updateBalance(); };
+  row.querySelector('.line-debe').oninput = updateBalance;
+  row.querySelector('.line-haber').oninput = updateBalance;
+  c.appendChild(row);
+  updateBalance();
+}
+function updateBalance(){
+  const rows = document.querySelectorAll('.lineRow');
+  let debe=0, haber=0;
+  rows.forEach(r=>{ debe += parseFloat(r.querySelector('.line-debe').value)||0; haber += parseFloat(r.querySelector('.line-haber').value)||0; });
+  const bar = document.getElementById('balance-bar');
+  const ok = rows.length>=2 && debe===haber && debe>0;
+  bar.textContent = `Debe: $${debe.toFixed(2)} · Haber: $${haber.toFixed(2)}` + (ok?' · Cuadrado':' · Descuadrado');
+  bar.className = 'balancebar ' + (ok?'ok':'bad');
+  document.getElementById('modal-save').disabled = !ok;
+}
+async function saveEntry(){
+  const fecha = document.getElementById('e-fecha').value;
+  const concepto = document.getElementById('e-concepto').value.trim();
+  if(!concepto){ toast('Escribe un concepto para el asiento','err'); return; }
+  const rows = document.querySelectorAll('.lineRow');
+  const lineas = Array.from(rows).map(r=>({
+    cuenta_id: r.querySelector('.line-acct').value || null,
+    debe: parseFloat(r.querySelector('.line-debe').value)||0,
+    haber: parseFloat(r.querySelector('.line-haber').value)||0,
+    tercero_nit: r.querySelector('.line-tercero').value.trim() || null
+  })).filter(l=>l.cuenta_id && (l.debe>0 || l.haber>0));
+  if(lineas.length<2){ toast('Se necesitan al menos 2 líneas con cuenta asignada','err'); return; }
+  try{
+    const created = await pg('journal_entries', {method:'POST', body: JSON.stringify({tenant_id:activeTenantId, fecha, concepto, origen:'manual', estado:'confirmado'}), headers:{'Prefer':'return=representation'}});
+    const entryId = created[0].id;
+    const linesPayload = lineas.map(l=>Object.assign({entry_id:entryId}, l));
+    await pg('journal_lines', {method:'POST', body: JSON.stringify(linesPayload), headers:{'Prefer':'return=minimal'}});
+    toast('Asiento guardado','ok');
+    closeModal(); render();
+  }catch(e){ toast('Error guardando asiento: '+e.message,'err'); }
+}
+
+// ---------- Inventario ----------
+async function renderInventario(content, actions){
+  actions.innerHTML = `<button class="btn primary" id="new-item-btn">+ Nuevo producto</button>`;
+  document.getElementById('new-item-btn').onclick = openInventoryItemModal;
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const items = await pg(`inventory_items?select=*&tenant_id=eq.${activeTenantId}&order=nombre.asc`);
+  if(!items.length){ content.innerHTML = '<div class="empty">Sin productos en inventario para este cliente. Crea el primero.</div>'; return; }
+  content.innerHTML = `<table class="grid"><thead><tr><th>Código</th><th>Producto</th><th>Existencia</th><th>Costo promedio</th><th>Valor en inventario</th><th></th></tr></thead><tbody>` +
+    items.map(it=>`<tr>
+      <td class="mono">${it.codigo||''}</td><td>${it.nombre}</td>
+      <td class="mono">${Number(it.existencia_actual).toFixed(2)} ${it.unidad}</td>
+      <td class="mono">$${Number(it.costo_promedio).toFixed(4)}</td>
+      <td class="mono">$${(Number(it.existencia_actual)*Number(it.costo_promedio)).toFixed(2)}</td>
+      <td><button class="btn small" data-id="${it.id}" data-nombre="${it.nombre}">+ Entrada</button></td>
+    </tr>`).join('') + '</tbody></table>';
+  content.querySelectorAll('button[data-id]').forEach(b=> b.onclick = () => openEntradaModal(b.dataset.id, b.dataset.nombre));
+}
+
+function openInventoryItemModal(){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Nuevo producto</h3>
+    <div class="field"><label>Código (opcional)</label><input id="inv-codigo"></div>
+    <div class="field"><label>Nombre</label><input id="inv-nombre"></div>
+    <div class="field"><label>Unidad</label><input id="inv-unidad" value="unidad"></div>
+    <div class="field"><label>Existencia inicial</label><input id="inv-existencia" type="number" step="0.01" value="0"></div>
+    <div class="field"><label>Costo unitario inicial</label><input id="inv-costo" type="number" step="0.0001" value="0"></div>
+    <div class="field"><label>Cuenta de inventario (Activo) — opcional, para generar el asiento automático</label>
+      <select id="inv-cta-inv"><option value="">— no generar asiento automático —</option>${acctOptions(null)}</select>
+    </div>
+    <div class="field"><label>Cuenta de costo de venta (Costo) — opcional</label>
+      <select id="inv-cta-costo"><option value="">—</option>${acctOptions(null)}</select>
+    </div>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save">Crear producto</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-save').onclick = saveInventoryItem;
+}
+async function saveInventoryItem(){
+  const nombre = document.getElementById('inv-nombre').value.trim();
+  if(!nombre){ toast('El nombre es obligatorio','err'); return; }
+  const payload = {
+    tenant_id: activeTenantId,
+    codigo: document.getElementById('inv-codigo').value.trim() || null,
+    nombre,
+    unidad: document.getElementById('inv-unidad').value.trim() || 'unidad',
+    existencia_actual: parseFloat(document.getElementById('inv-existencia').value)||0,
+    costo_promedio: parseFloat(document.getElementById('inv-costo').value)||0,
+    cuenta_inventario_id: document.getElementById('inv-cta-inv').value || null,
+    cuenta_costo_id: document.getElementById('inv-cta-costo').value || null
+  };
+  try{
+    await pg('inventory_items', {method:'POST', body: JSON.stringify(payload), headers:{'Prefer':'return=minimal'}});
+    toast('Producto creado','ok');
+    closeModal(); render();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+function openEntradaModal(itemId, nombre){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Entrada de inventario — ${nombre}</h3>
+    <div class="field"><label>Fecha</label><input id="ent-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Cantidad</label><input id="ent-cantidad" type="number" step="0.01"></div>
+    <div class="field"><label>Costo unitario de esta compra</label><input id="ent-costo" type="number" step="0.0001"></div>
+    <p class="hint">El costo promedio del producto se recalcula automáticamente con esta compra.</p>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save">Registrar entrada</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-save').onclick = async ()=>{
+    const cantidad = parseFloat(document.getElementById('ent-cantidad').value)||0;
+    const costo = parseFloat(document.getElementById('ent-costo').value)||0;
+    const fecha = document.getElementById('ent-fecha').value;
+    if(cantidad<=0){ toast('La cantidad debe ser mayor a cero','err'); return; }
+    try{
+      const out = await pg('rpc/registrar_entrada_inventario', {method:'POST', body: JSON.stringify({p_item_id:itemId, p_cantidad:cantidad, p_costo_unitario:costo, p_fecha:fecha})});
+      if(out.error){ toast(out.error,'err'); return; }
+      toast(`Entrada registrada. Nueva existencia: ${Number(out.nueva_existencia).toFixed(2)}`,'ok');
+      closeModal(); render();
+    }catch(e){ toast('Error: '+e.message,'err'); }
+  };
+}
+
+// ---------- Datos contables base (movimientos confirmados) ----------
+async function loadMovimientos(){
+  const lines = await pg(`journal_lines?select=id,debe,haber,cuenta_id,entry_id,journal_entries!inner(fecha,estado,tenant_id)&journal_entries.tenant_id=eq.${activeTenantId}&journal_entries.estado=eq.confirmado&order=entry_id.asc`);
+  const acctRows = await pg(`tenant_accounts?select=id,codigo,nombre,tipo_niif,naturaleza&tenant_id=eq.${activeTenantId}`);
+  const acctMap = Object.fromEntries(acctRows.map(a=>[a.id,a]));
+  return { lines, acctMap };
+}
+function saldoCuenta(naturaleza, debe, haber){
+  return naturaleza === 'deudora' ? (debe - haber) : (haber - debe);
+}
+
+// ---------- Libro Diario ----------
+async function renderDiario(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const { lines, acctMap } = await loadMovimientos();
+  if(!lines.length){ content.innerHTML = '<div class="empty">Sin asientos confirmados para este cliente.</div>'; return; }
+  const byEntry = {};
+  lines.forEach(l=>{
+    if(!byEntry[l.entry_id]) byEntry[l.entry_id] = { fecha: l.journal_entries.fecha, lines: [] };
+    byEntry[l.entry_id].lines.push(l);
+  });
+  const entryIds = Object.keys(byEntry).sort((a,b)=> byEntry[a].fecha.localeCompare(byEntry[b].fecha) || a.localeCompare(b));
+  const entryMetas = await pg(`journal_entries?select=id,concepto&id=in.(${entryIds.join(',')})`);
+  const conceptoMap = Object.fromEntries(entryMetas.map(e=>[e.id, e.concepto]));
+  let html = '';
+  entryIds.forEach((eid, idx)=>{
+    const e = byEntry[eid];
+    let totDebe=0, totHaber=0;
+    html += `<div class="card" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;"><strong>Partida N° ${idx+1}</strong><span class="mono">${e.fecha}</span></div>
+      ${conceptoMap[eid] ? `<div class="hint" style="margin-top:2px;">${conceptoMap[eid]}</div>` : ''}
+      <table class="grid" style="margin-top:10px;"><thead><tr><th>Cuenta</th><th>Debe</th><th>Haber</th></tr></thead><tbody>` +
+      e.lines.map(l=>{
+        const a = acctMap[l.cuenta_id] || {codigo:'—',nombre:'(sin cuenta)'};
+        totDebe += Number(l.debe); totHaber += Number(l.haber);
+        return `<tr><td>${a.codigo} · ${a.nombre}</td><td class="mono">${Number(l.debe)?'$'+Number(l.debe).toFixed(2):''}</td><td class="mono">${Number(l.haber)?'$'+Number(l.haber).toFixed(2):''}</td></tr>`;
+      }).join('') +
+      `<tr><td><strong>Totales</strong></td><td class="mono"><strong>$${totDebe.toFixed(2)}</strong></td><td class="mono"><strong>$${totHaber.toFixed(2)}</strong></td></tr>` +
+      '</tbody></table></div>';
+  });
+  content.innerHTML = html;
+}
+
+// ---------- Libro Mayor ----------
+async function renderMayor(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const { lines, acctMap } = await loadMovimientos();
+  const acctIdsWithMovs = [...new Set(lines.map(l=>l.cuenta_id))];
+  const options = acctIdsWithMovs.map(id=>{
+    const a = acctMap[id]; if(!a) return '';
+    return `<option value="${id}">${a.codigo} · ${a.nombre}</option>`;
+  }).join('');
+  content.innerHTML = `
+    <div class="field" style="max-width:360px;"><label>Cuenta</label><select id="mayor-acct">${options || '<option value="">Sin movimientos</option>'}</select></div>
+    <div id="mayor-table"></div>`;
+  function paint(){
+    const acctId = document.getElementById('mayor-acct').value;
+    const a = acctMap[acctId];
+    const rows = lines.filter(l=>l.cuenta_id===acctId).sort((x,y)=> x.journal_entries.fecha.localeCompare(y.journal_entries.fecha));
+    let saldo = 0;
+    let html = `<table class="grid"><thead><tr><th>Fecha</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead><tbody>`;
+    rows.forEach(l=>{
+      saldo += saldoCuenta(a.naturaleza, Number(l.debe), Number(l.haber));
+      html += `<tr><td class="mono">${l.journal_entries.fecha}</td><td class="mono">${Number(l.debe)?'$'+Number(l.debe).toFixed(2):''}</td><td class="mono">${Number(l.haber)?'$'+Number(l.haber).toFixed(2):''}</td><td class="mono">$${saldo.toFixed(2)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    if(!rows.length) html = '<div class="empty">Esta cuenta no tiene movimientos.</div>';
+    document.getElementById('mayor-table').innerHTML = html;
+  }
+  if(acctIdsWithMovs.length){ document.getElementById('mayor-acct').onchange = paint; paint(); }
+}
+
+// ---------- Balanza de comprobación ----------
+async function computeBalanza(){
+  const { lines, acctMap } = await loadMovimientos();
+  const agg = {};
+  lines.forEach(l=>{
+    if(!agg[l.cuenta_id]) agg[l.cuenta_id] = { debe:0, haber:0 };
+    agg[l.cuenta_id].debe += Number(l.debe);
+    agg[l.cuenta_id].haber += Number(l.haber);
+  });
+  const rows = Object.entries(agg).map(([cid,t])=>{
+    const a = acctMap[cid] || {codigo:'—',nombre:'(sin cuenta)',naturaleza:'deudora',tipo_niif:''};
+    return { cuenta: a, debe:t.debe, haber:t.haber, saldo: saldoCuenta(a.naturaleza, t.debe, t.haber) };
+  }).sort((x,y)=> x.cuenta.codigo.localeCompare(y.cuenta.codigo));
+  return rows;
+}
+async function renderBalanza(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const rows = await computeBalanza();
+  if(!rows.length){ content.innerHTML = '<div class="empty">Sin movimientos para calcular la balanza.</div>'; return; }
+  let totDebe=0, totHaber=0;
+  let html = `<table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Debe</th><th>Haber</th><th>Saldo</th><th>Naturaleza</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    totDebe += r.debe; totHaber += r.haber;
+    html += `<tr><td class="mono">${r.cuenta.codigo}</td><td>${r.cuenta.nombre}</td><td class="mono">$${r.debe.toFixed(2)}</td><td class="mono">$${r.haber.toFixed(2)}</td><td class="mono">$${r.saldo.toFixed(2)}</td><td>${r.cuenta.naturaleza||''}</td></tr>`;
+  });
+  html += `<tr><td colspan="2"><strong>Totales</strong></td><td class="mono"><strong>$${totDebe.toFixed(2)}</strong></td><td class="mono"><strong>$${totHaber.toFixed(2)}</strong></td><td colspan="2"></td></tr>`;
+  html += '</tbody></table>';
+  const cuadrada = Math.abs(totDebe-totHaber) < 0.005;
+  html = `<div class="balancebar ${cuadrada?'ok':'bad'}" style="border-top:none;margin-top:0;margin-bottom:14px;">${cuadrada?'Balanza cuadrada':'Balanza descuadrada — revisa los asientos'}</div>` + html;
+  content.innerHTML = html;
+}
+
+// ---------- Estados financieros ----------
+async function renderEstados(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const rows = await computeBalanza();
+  if(!rows.length){ content.innerHTML = '<div class="empty">Sin movimientos para generar estados financieros.</div>'; return; }
+  const sum = (tipo) => rows.filter(r=>r.cuenta.tipo_niif===tipo).reduce((s,r)=>s+r.saldo,0);
+  const ingresos = sum('ingreso');
+  const costos = sum('costo');
+  const gastos = sum('gasto');
+  const utilidad = ingresos - costos - gastos;
+  const activo = sum('activo');
+  const pasivo = sum('pasivo');
+  const patrimonio = sum('patrimonio') + utilidad;
+  const cuadrado = Math.abs(activo - (pasivo + patrimonio)) < 0.005;
+
+  const rowsByTipo = (tipo) => rows.filter(r=>r.cuenta.tipo_niif===tipo && Math.abs(r.saldo)>0.004);
+  const tableFor = (tipo) => rowsByTipo(tipo).map(r=>`<tr><td>${r.cuenta.codigo} · ${r.cuenta.nombre}</td><td class="mono">$${r.saldo.toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="2" class="hint">Sin movimientos</td></tr>';
+
+  content.innerHTML = `
+    <h3 style="margin-top:0;">Estado de Resultados</h3>
+    <table class="grid"><tbody>
+      <tr><td><strong>Ingresos</strong></td><td class="mono"><strong>$${ingresos.toFixed(2)}</strong></td></tr>
+      ${tableFor('ingreso')}
+      <tr><td><strong>(–) Costos</strong></td><td class="mono"><strong>$${costos.toFixed(2)}</strong></td></tr>
+      ${tableFor('costo')}
+      <tr><td><strong>(–) Gastos</strong></td><td class="mono"><strong>$${gastos.toFixed(2)}</strong></td></tr>
+      ${tableFor('gasto')}
+      <tr><td><strong>Utilidad del ejercicio</strong></td><td class="mono"><strong>$${utilidad.toFixed(2)}</strong></td></tr>
+    </tbody></table>
+
+    <h3 style="margin-top:24px;">Balance General</h3>
+    <div class="kv">
+      <div class="item"><div class="lbl">Activo</div><div class="val">$${activo.toFixed(2)}</div></div>
+      <div class="item"><div class="lbl">Pasivo</div><div class="val">$${pasivo.toFixed(2)}</div></div>
+      <div class="item"><div class="lbl">Patrimonio</div><div class="val">$${patrimonio.toFixed(2)}</div></div>
+    </div>
+    <div class="balancebar ${cuadrado?'ok':'bad'}">${cuadrado?'Activo = Pasivo + Patrimonio · cuadrado':'Descuadre en el balance — revisa los asientos'}</div>
+    <table class="grid" style="margin-top:14px;"><thead><tr><th>Cuenta</th><th>Saldo</th></tr></thead><tbody>
+      <tr><td colspan="2"><strong>Activo</strong></td></tr>${tableFor('activo')}
+      <tr><td colspan="2"><strong>Pasivo</strong></td></tr>${tableFor('pasivo')}
+      <tr><td colspan="2"><strong>Patrimonio</strong></td></tr>${tableFor('patrimonio')}
+    </tbody></table>
+    <p class="hint">Estos estados se calculan a partir de los asientos confirmados en el sistema (manuales y los que generes desde documentos DTE). No incluyen saldos de apertura si vienes de otro sistema — dímelo si necesitas cargarlos.</p>
+  `;
+}
+
+// ---------- Saldos de apertura ----------
+async function renderApertura(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const existing = await pg(`journal_entries?select=id,fecha&tenant_id=eq.${activeTenantId}&origen=eq.apertura`);
+  const cuentas = await pg(`tenant_accounts?select=id,codigo,nombre,naturaleza,tipo_niif&tenant_id=eq.${activeTenantId}&es_movimiento=eq.true&tipo_niif=in.(activo,pasivo,patrimonio)&order=codigo.asc`);
+  if(!cuentas.length){ content.innerHTML = '<div class="empty">Este cliente no tiene plan de cuentas cargado todavía.</div>'; return; }
+
+  let existingLines = {};
+  if(existing.length){
+    const lns = await pg(`journal_lines?select=cuenta_id,debe,haber&entry_id=eq.${existing[0].id}`);
+    lns.forEach(l=>{ existingLines[l.cuenta_id] = l; });
+  }
+
+  content.innerHTML = `
+    ${existing.length ? `<div class="warn-box" style="background:rgba(216,166,87,.1);border:1px solid rgba(216,166,87,.35);color:var(--warn);padding:10px 12px;border-radius:6px;font-size:12.5px;margin-bottom:16px;">Ya existe un asiento de apertura (${existing[0].fecha}) para este cliente. Si guardas de nuevo, se reemplazará por completo.</div>` : ''}
+    <div class="field" style="max-width:220px;"><label>Fecha de corte</label><input id="ap-fecha" type="date" value="${existing.length ? existing[0].fecha : '2025-12-31'}"></div>
+    <input type="file" id="ap-file" accept=".xlsx,.xls" style="display:none;">
+    <button class="btn" id="ap-import-btn" style="margin-bottom:14px;">Importar desde Excel</button>
+    <table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Naturaleza</th><th>Debe</th><th>Haber</th></tr></thead><tbody>
+    ${cuentas.map(c=>{
+      const ex = existingLines[c.id];
+      return `<tr>
+        <td class="mono">${c.codigo}</td><td>${c.nombre}</td><td>${c.naturaleza}</td>
+        <td><input class="ap-debe" data-acct="${c.id}" type="number" step="0.01" style="width:110px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:5px 7px;border-radius:5px;" value="${ex?Number(ex.debe):''}"></td>
+        <td><input class="ap-haber" data-acct="${c.id}" type="number" step="0.01" style="width:110px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:5px 7px;border-radius:5px;" value="${ex?Number(ex.haber):''}"></td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>
+    <div class="balancebar" id="ap-balance">Debe: $0.00 · Haber: $0.00</div>
+    <button class="btn primary" id="ap-save" style="margin-top:10px;" disabled>${existing.length?'Reemplazar saldos de apertura':'Guardar saldos de apertura'}</button>
+  `;
+  function recalc(){
+    let debe=0, haber=0;
+    content.querySelectorAll('.ap-debe').forEach(i=> debe += parseFloat(i.value)||0);
+    content.querySelectorAll('.ap-haber').forEach(i=> haber += parseFloat(i.value)||0);
+    const ok = debe===haber && debe>0;
+    const bar = document.getElementById('ap-balance');
+    bar.textContent = `Debe: $${debe.toFixed(2)} · Haber: $${haber.toFixed(2)}` + (ok?' · Cuadrado':' · Descuadrado');
+    bar.className = 'balancebar ' + (ok?'ok':'bad');
+    document.getElementById('ap-save').disabled = !ok;
+  }
+  content.querySelectorAll('.ap-debe,.ap-haber').forEach(i=> i.oninput = recalc);
+  recalc();
+  document.getElementById('ap-save').onclick = () => saveApertura(existing[0]);
+  document.getElementById('ap-import-btn').onclick = () => document.getElementById('ap-file').click();
+  document.getElementById('ap-file').onchange = (e) => handleAperturaExcel(e, cuentas, recalc);
+}
+
+function handleAperturaExcel(e, cuentas, recalc){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try{
+      const wb = XLSX.read(evt.target.result, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+      const codigoToId = {};
+      cuentas.forEach(c => codigoToId[String(c.codigo)] = c.id);
+      let matched = 0;
+      rows.forEach(row => {
+        const codigo = row[0] ? String(row[0]).trim() : null;
+        if(!codigo || !codigoToId[codigo]) return;
+        const debe = parseFloat(row[3]) || 0;
+        const haber = parseFloat(row[4]) || 0;
+        const debeInput = document.querySelector(`.ap-debe[data-acct="${codigoToId[codigo]}"]`);
+        const haberInput = document.querySelector(`.ap-haber[data-acct="${codigoToId[codigo]}"]`);
+        if(debeInput){ debeInput.value = debe || ''; matched++; }
+        if(haberInput){ haberInput.value = haber || ''; }
+      });
+      recalc();
+      toast(`Se importaron ${matched} cuentas desde el Excel`, 'ok');
+    }catch(err){
+      toast('No se pudo leer el archivo: '+err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+}
+
+async function saveApertura(existingEntry){
+  const fecha = document.getElementById('ap-fecha').value;
+  const lineas = [];
+  document.querySelectorAll('.ap-debe').forEach(i=>{
+    const acct = i.dataset.acct;
+    const debe = parseFloat(i.value)||0;
+    const haberInput = document.querySelector(`.ap-haber[data-acct="${acct}"]`);
+    const haber = parseFloat(haberInput.value)||0;
+    if(debe>0 || haber>0) lineas.push({ cuenta_id: acct, debe, haber });
+  });
+  if(lineas.length<1){ toast('Ingresa al menos un saldo','err'); return; }
+  try{
+    if(existingEntry){
+      await pg(`journal_lines?entry_id=eq.${existingEntry.id}`, { method:'DELETE' });
+      await pg(`journal_entries?id=eq.${existingEntry.id}`, { method:'PATCH', body: JSON.stringify({fecha}), headers:{'Prefer':'return=minimal'} });
+      await pg('journal_lines', { method:'POST', body: JSON.stringify(lineas.map(l=>Object.assign({entry_id:existingEntry.id}, l))), headers:{'Prefer':'return=minimal'} });
+    } else {
+      const created = await pg('journal_entries', { method:'POST', body: JSON.stringify({tenant_id:activeTenantId, fecha, origen:'apertura', estado:'confirmado'}), headers:{'Prefer':'return=representation'} });
+      const entryId = created[0].id;
+      await pg('journal_lines', { method:'POST', body: JSON.stringify(lineas.map(l=>Object.assign({entry_id:entryId}, l))), headers:{'Prefer':'return=minimal'} });
+    }
+    toast('Saldos de apertura guardados','ok');
+    render();
+  }catch(e){ toast('Error guardando saldos de apertura: '+e.message,'err'); }
+}
+
+// ---------- Plan de cuentas ----------
+async function renderCuentas(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const rows = await pg(`tenant_accounts?select=*&tenant_id=eq.${activeTenantId}&order=codigo.asc`);
+  if(!rows.length){ content.innerHTML = '<div class="empty">Este cliente no tiene plan de cuentas. Ve a "Clientes" y cárgalo.</div>'; return; }
+  const kv = {activo:0,pasivo:0,patrimonio:0,ingreso:0,gasto:0,costo:0};
+  rows.forEach(r=>{ if(kv[r.tipo_niif]!==undefined) kv[r.tipo_niif]++; });
+  content.innerHTML = `<div class="kv">` + Object.entries(kv).map(([k,v])=>`<div class="item"><div class="lbl">${k}</div><div class="val">${v}</div></div>`).join('') + `</div>` +
+    `<table class="grid"><thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Naturaleza</th><th>Nivel</th><th>Movimiento</th></tr></thead><tbody>` +
+    rows.map(r=>`<tr><td class="mono">${r.codigo}</td><td>${r.nombre}</td><td>${r.tipo_niif}</td><td>${r.naturaleza||''}</td><td>${r.nivel||''}</td><td>${r.es_movimiento?'sí':'no'}</td></tr>`).join('') +
+    '</tbody></table>';
+}
+
+// ---------- Modal helpers ----------
+function closeModal(){ document.getElementById('modalbg').style.display='none'; }
+document.getElementById('modalbg').addEventListener('click', e=>{ if(e.target.id==='modalbg') closeModal(); });
+
+function openChangePasswordModal(){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Cambiar mi contraseña</h3>
+    <div class="field"><label>Nueva contraseña (mínimo 8 caracteres)</label><input id="newpass1" type="password"></div>
+    <div class="field"><label>Confirmar nueva contraseña</label><input id="newpass2" type="password"></div>
+    <div id="changepass-error" style="color:var(--danger);font-size:12.5px;display:none;margin-bottom:8px;"></div>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save-pass">Guardar</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-save-pass').onclick = submitPasswordChange;
+}
+async function submitPasswordChange(){
+  const p1=document.getElementById('newpass1').value, p2=document.getElementById('newpass2').value;
+  const errEl=document.getElementById('changepass-error'); errEl.style.display='none';
+  if(p1.length<8){ errEl.textContent='Debe tener al menos 8 caracteres.'; errEl.style.display='block'; return; }
+  if(p1!==p2){ errEl.textContent='No coinciden.'; errEl.style.display='block'; return; }
+  try{
+    const res = await fetch(SUPABASE_URL+'/auth/v1/user',{method:'PUT',headers:{'apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify({password:p1})});
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error_description||data.msg||'No se pudo cambiar');
+    closeModal(); toast('Contraseña actualizada','ok');
+  }catch(e){ errEl.textContent=e.message; errEl.style.display='block'; }
+}
+
+boot();
+</script>
+</body>
+</html>
