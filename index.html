@@ -40,6 +40,17 @@
   #tenantpicker label{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);display:block;margin-bottom:6px;}
   #tenantpicker select{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:7px 8px;border-radius:6px;font-size:12.5px;}
   #nav{padding:10px;display:flex;flex-direction:column;gap:2px;flex:1;overflow-y:auto;}
+  .navgroup{margin-bottom:4px;}
+  .navgroup-header{
+    font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);
+    padding:10px 10px 6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;
+    user-select:none;
+  }
+  .navgroup-header:hover{color:var(--text);}
+  .navgroup-header::after{content:'▾';font-size:9px;transition:transform .15s;}
+  .navgroup-header.collapsed::after{transform:rotate(-90deg);}
+  .navgroup-items{display:flex;flex-direction:column;gap:2px;}
+  .navgroup-items.collapsed{display:none;}
   .navbtn{background:none;border:none;color:var(--text-dim);text-align:left;padding:9px 10px;border-radius:6px;font-size:13.5px;cursor:pointer;font-family:var(--sans);}
   .navbtn:hover{background:var(--panel-2);color:var(--text);}
   .navbtn.active{background:var(--panel-2);color:var(--accent);font-weight:600;}
@@ -130,20 +141,35 @@
       <select id="tenant-select"></select>
     </div>
     <div id="nav">
-      <button class="navbtn active" data-view="dtes">Documentos DTE</button>
-      <button class="navbtn" data-view="excepciones">Excepciones</button>
-      <button class="navbtn" data-view="inventario">Inventario</button>
-      <button class="navbtn" data-view="asientos">Asientos manuales</button>
-      <button class="navbtn" data-view="diario">Libro Diario</button>
-      <button class="navbtn" data-view="mayor">Libro Mayor</button>
-      <button class="navbtn" data-view="balanza">Balanza de Comprobación</button>
-      <button class="navbtn" data-view="libro_compras">Libro de Compras</button>
-      <button class="navbtn" data-view="libro_ventas_cf">Libro Ventas Consumidor Final</button>
-      <button class="navbtn" data-view="libro_ventas_ccf">Libro Ventas Crédito Fiscal</button>
-      <button class="navbtn" data-view="estados">Estados Financieros</button>
-      <button class="navbtn" data-view="apertura">Saldos de apertura</button>
-      <button class="navbtn" data-view="cuentas">Plan de cuentas</button>
-      <button class="navbtn" data-view="clientes">Clientes</button>
+      <div class="navgroup">
+        <div class="navgroup-header" data-group="finanzas">Área de Finanzas</div>
+        <div class="navgroup-items" data-group-items="finanzas">
+          <button class="navbtn" data-view="estados">Estados Financieros</button>
+          <button class="navbtn" data-view="inventario">Inventario</button>
+          <button class="navbtn" data-view="balanza">Balanza de Comprobación</button>
+        </div>
+      </div>
+      <div class="navgroup">
+        <div class="navgroup-header" data-group="contabilidad">Área de Contabilidad</div>
+        <div class="navgroup-items" data-group-items="contabilidad">
+          <button class="navbtn active" data-view="dtes">Documentos DTE</button>
+          <button class="navbtn" data-view="excepciones">Excepciones</button>
+          <button class="navbtn" data-view="asientos">Asientos manuales</button>
+          <button class="navbtn" data-view="diario">Libro Diario</button>
+          <button class="navbtn" data-view="mayor">Libro Mayor</button>
+          <button class="navbtn" data-view="libro_compras">Libro de Compras</button>
+          <button class="navbtn" data-view="libro_ventas_cf">Libro Ventas Consumidor Final</button>
+          <button class="navbtn" data-view="libro_ventas_ccf">Libro Ventas Crédito Fiscal</button>
+        </div>
+      </div>
+      <div class="navgroup">
+        <div class="navgroup-header" data-group="config">Configuración</div>
+        <div class="navgroup-items" data-group-items="config">
+          <button class="navbtn" data-view="apertura">Saldos de apertura</button>
+          <button class="navbtn" data-view="cuentas">Plan de cuentas</button>
+          <button class="navbtn" data-view="clientes">Clientes</button>
+        </div>
+      </div>
     </div>
     <div id="userbar">
       <div class="who"><span class="nm" id="userbar-name">—</span><span class="rolepill" id="userbar-role">—</span></div>
@@ -275,6 +301,12 @@ function setView(v){
   render();
 }
 document.querySelectorAll('.navbtn').forEach(b=> b.onclick = ()=> setView(b.dataset.view));
+document.querySelectorAll('.navgroup-header').forEach(h=>{
+  h.onclick = ()=>{
+    h.classList.toggle('collapsed');
+    document.querySelector(`.navgroup-items[data-group-items="${h.dataset.group}"]`).classList.toggle('collapsed');
+  };
+});
 
 function requireTenant(){
   if(!activeTenantId){
