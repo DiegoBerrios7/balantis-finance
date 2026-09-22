@@ -1545,7 +1545,8 @@ async function renderCuentas(content, actions){
 
 // ---------- Modal helpers ----------
 function closeModal(){ document.getElementById('modalbg').style.display='none'; }
-document.getElementById('modalbg').addEventListener('click', e=>{ if(e.target.id==='modalbg') closeModal(); });
+// Nota: se quitó el cierre automático al hacer clic fuera del formulario — causaba que se cerrara
+// sin querer y sin guardar. Ahora el modal solo se cierra con los botones "Cancelar"/"Cerrar".
 
 function openChangePasswordModal(){
   const modal = document.getElementById('modal');
