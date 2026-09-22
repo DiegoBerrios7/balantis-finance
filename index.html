@@ -749,13 +749,27 @@ async function openVentaDetailModal(dteId){
     <h3>${doc.nombre_receptor||'Consumidor final'} · ${doc.numero_control||''}</h3>
     <p class="hint">${doc.fecha_emision} · $${Number(doc.monto_total).toFixed(2)} · <span class="pill ${doc.estado}">${doc.estado}</span></p>
     <div id="venta-items-list"></div>
-    ${yaContabilizada ? '<p class="hint">Esta venta ya tiene su asiento contable generado.</p>' : `
-    <div class="field"><label>¿Con qué se cobró? (cuenta de cobro)</label><select id="venta-cta-cobro">${acctOptions(null)}</select></div>
+    ${yaContabilizada ? `<p class="hint">Esta venta ya tiene su asiento contable generado${doc.condicion_pago?' · '+(doc.condicion_pago==='credito'?'Al crédito'+(doc.fecha_vencimiento?' (vence '+doc.fecha_vencimiento+')':''):'De contado'):''}.</p>` : `
+    <div class="field"><label>Condición de pago</label>
+      <select id="venta-condicion">
+        <option value="contado">Contado</option>
+        <option value="credito">Crédito</option>
+      </select>
+    </div>
+    <div class="field" id="venta-plazo-field" style="display:none;"><label>Plazo (días)</label><input id="venta-plazo" type="number" min="1" value="30"></div>
+    <div class="field"><label id="venta-cta-cobro-label">¿Con qué se cobró? (Caja o Banco)</label><select id="venta-cta-cobro">${acctOptions(null)}</select></div>
     `}
     <div class="modalactions">
       <button class="btn" id="modal-cancel">Cerrar</button>
       ${yaContabilizada ? '' : '<button class="btn primary" id="gen-asiento-btn">Generar asiento de venta</button>'}
     </div>`;
+  if(!yaContabilizada){
+    document.getElementById('venta-condicion').onchange = (e)=>{
+      const esCredito = e.target.value === 'credito';
+      document.getElementById('venta-plazo-field').style.display = esCredito ? 'block' : 'none';
+      document.getElementById('venta-cta-cobro-label').textContent = esCredito ? '¿A qué cuenta por cobrar / cliente se carga?' : '¿Con qué se cobró? (Caja o Banco)';
+    };
+  }
   const list = document.getElementById('venta-items-list');
   list.innerHTML = items.map(it => `
     <div class="card" style="margin-bottom:10px;">
@@ -783,11 +797,13 @@ async function openVentaDetailModal(dteId){
   if(genBtn){
     genBtn.onclick = async ()=>{
       const cuentaCobro = document.getElementById('venta-cta-cobro').value;
-      if(!cuentaCobro){ toast('Selecciona con qué se cobró','err'); return; }
+      const condicion = document.getElementById('venta-condicion').value;
+      const plazo = condicion==='credito' ? (parseInt(document.getElementById('venta-plazo').value)||null) : null;
+      if(!cuentaCobro){ toast(condicion==='credito' ? 'Selecciona la cuenta por cobrar / cliente' : 'Selecciona con qué se cobró','err'); return; }
       try{
-        const out = await pg('rpc/registrar_venta_contable', {method:'POST', body: JSON.stringify({p_dte_id: dteId, p_cuenta_cobro_id: cuentaCobro})});
+        const out = await pg('rpc/registrar_venta_contable', {method:'POST', body: JSON.stringify({p_dte_id: dteId, p_cuenta_cobro_id: cuentaCobro, p_condicion_pago: condicion, p_plazo_dias: plazo})});
         if(out.error){ toast(out.error,'err'); return; }
-        toast(`Venta contabilizada. Total: $${Number(out.total).toFixed(2)}${out.items_inventario_descargados?' · '+out.items_inventario_descargados+' producto(s) descontados del inventario':''}`,'ok');
+        toast(`Venta contabilizada (${condicion==='credito'?'al crédito':'de contado'}). Total: $${Number(out.total).toFixed(2)}${out.items_inventario_descargados?' · '+out.items_inventario_descargados+' producto(s) descontados del inventario':''}`,'ok');
         closeModal(); render();
       }catch(e){ toast('Error: '+e.message,'err'); }
     };
