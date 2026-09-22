@@ -494,11 +494,12 @@ async function renderDtes(content, actions){
   content.querySelectorAll('button[data-id]').forEach(b=> b.onclick = ()=> openDteDetail(b.dataset.id));
 }
 
-function openManualSaleModal(){
+async function openManualSaleModal(){
+  const invItems = await pg(`inventory_items?select=id,nombre,existencia_actual&tenant_id=eq.${activeTenantId}&order=nombre.asc`);
   const modal = document.getElementById('modal');
   modal.innerHTML = `
     <h3>Venta con documento físico</h3>
-    <p class="hint">Para clientes cuyas ventas todavía no van por factura electrónica. Después de guardar, la clasificas igual que un DTE normal (cuenta + producto), y el inventario se descuenta solo.</p>
+    <p class="hint">Elige el producto de cada línea directo aquí para que quede vinculado al inventario desde ya. Después, al "Completar venta" en el área de Ventas, se descuenta y se genera el asiento.</p>
     <div class="field"><label>Fecha</label><input id="ms-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>Tipo de documento</label>
       <select id="ms-tipo"><option value="01">Factura (consumidor final)</option><option value="03">Comprobante de Crédito Fiscal</option></select>
@@ -514,21 +515,28 @@ function openManualSaleModal(){
     </div>`;
   document.getElementById('modalbg').style.display='flex';
   document.getElementById('modal-cancel').onclick = closeModal;
-  document.getElementById('ms-add-item-btn').onclick = addManualSaleItemRow;
+  document.getElementById('ms-add-item-btn').onclick = ()=> addManualSaleItemRow(invItems);
   document.getElementById('modal-save').onclick = saveManualSale;
-  addManualSaleItemRow();
+  addManualSaleItemRow(invItems);
 }
-function addManualSaleItemRow(){
+function addManualSaleItemRow(invItems){
   const c = document.getElementById('ms-items-container');
   const row = document.createElement('div');
   row.className = 'lineRow';
-  row.style.gridTemplateColumns = '2fr 1fr 1fr 1fr auto';
+  row.style.gridTemplateColumns = '1.4fr 1.4fr 0.8fr 0.9fr 0.9fr auto';
+  const prodOptions = '<option value="">— sin vincular a inventario —</option>' + (invItems||[]).map(p=>
+    `<option value="${p.id}" data-nombre="${p.nombre}">${p.nombre} (existencia: ${Number(p.existencia_actual).toFixed(2)})</option>`).join('');
   row.innerHTML = `
+    <select class="ms-producto">${prodOptions}</select>
     <input class="ms-desc" type="text" placeholder="Descripción">
     <input class="ms-cant" type="number" step="0.01" placeholder="Cantidad">
     <input class="ms-precio" type="number" step="0.01" placeholder="Precio unit. (con IVA)">
     <select class="ms-exenta"><option value="no">Gravada</option><option value="si">Exenta</option></select>
     <button class="btn small danger" type="button">×</button>`;
+  row.querySelector('.ms-producto').onchange = (e)=>{
+    const opt = e.target.selectedOptions[0];
+    if(opt && opt.dataset.nombre) row.querySelector('.ms-desc').value = opt.dataset.nombre;
+  };
   row.querySelector('button').onclick = ()=> row.remove();
   c.appendChild(row);
 }
@@ -546,7 +554,8 @@ async function saveManualSale(){
     const totalLinea = cantidad * precioConIva;
     const gravada = esExenta ? 0 : totalLinea / 1.13;
     const exenta = esExenta ? totalLinea : 0;
-    return { descripcion: r.querySelector('.ms-desc').value.trim(), cantidad, venta_gravada: gravada, venta_exenta: exenta };
+    const productoId = r.querySelector('.ms-producto').value || null;
+    return { descripcion: r.querySelector('.ms-desc').value.trim(), cantidad, venta_gravada: gravada, venta_exenta: exenta, producto_id: productoId };
   }).filter(it => it.descripcion && it.cantidad>0);
   if(!items.length){ toast('Agrega al menos un ítem con descripción y cantidad','err'); return; }
   const tenant = tenants.find(t=>t.id===activeTenantId);
@@ -570,11 +579,11 @@ async function saveManualSale(){
       estado: 'pendiente'
     }), headers:{'Prefer':'return=representation'}});
     const dteId = created[0].id;
-    const itemRows = items.map((it,idx)=>({ dte_id: dteId, num_item: idx+1, descripcion: it.descripcion, cantidad: it.cantidad, precio_uni: 0, venta_gravada: it.venta_gravada, venta_exenta: it.venta_exenta }));
+    const itemRows = items.map((it,idx)=>({ dte_id: dteId, num_item: idx+1, descripcion: it.descripcion, cantidad: it.cantidad, precio_uni: 0, venta_gravada: it.venta_gravada, venta_exenta: it.venta_exenta, producto_id: it.producto_id }));
     await pg('dte_items', {method:'POST', body: JSON.stringify(itemRows), headers:{'Prefer':'return=minimal'}});
-    toast('Venta registrada. Ahora clasifícala para descontar inventario.','ok');
+    toast('Venta registrada con productos vinculados. Ve a "Completar venta" para descontar el inventario y generar el asiento.','ok');
     closeModal();
-    openDteDetail(dteId);
+    openVentaDetailModal(dteId);
   }catch(e){ toast('Error guardando venta: '+e.message,'err'); }
 }
 
