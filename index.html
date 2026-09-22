@@ -568,6 +568,7 @@ async function saveManualSale(){
       tipo_dte: tipo,
       ambiente: 'fisico',
       fecha_emision: fecha,
+      tipo_operacion: 1,
       nit_emisor: tenant ? tenant.nit : null,
       nombre_emisor: tenant ? tenant.nombre : null,
       nit_receptor: clienteNit,
