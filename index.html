@@ -840,9 +840,38 @@ async function renderInventario(content, actions){
       <td class="mono">${Number(it.existencia_actual).toFixed(2)} ${it.unidad}</td>
       <td class="mono">$${Number(it.costo_promedio).toFixed(4)}</td>
       <td class="mono">$${(Number(it.existencia_actual)*Number(it.costo_promedio)).toFixed(2)}</td>
-      <td><button class="btn small" data-id="${it.id}" data-nombre="${it.nombre}">+ Entrada</button></td>
+      <td><button class="btn small" data-kardex="${it.id}" data-nombre="${it.nombre}">Ver Kardex</button> <button class="btn small" data-id="${it.id}" data-nombre="${it.nombre}">+ Entrada</button></td>
     </tr>`).join('') + '</tbody></table>';
   content.querySelectorAll('button[data-id]').forEach(b=> b.onclick = () => openEntradaModal(b.dataset.id, b.dataset.nombre));
+  content.querySelectorAll('button[data-kardex]').forEach(b=> b.onclick = () => openKardexModal(b.dataset.kardex, b.dataset.nombre));
+}
+
+async function openKardexModal(itemId, nombre){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `<h3>Kardex — ${nombre}</h3><div id="kardex-body"><div class="empty">Cargando…</div></div>
+    <div class="modalactions"><button class="btn" id="modal-cancel">Cerrar</button></div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  try{
+    const movs = await pg(`inventory_movements?select=*&item_id=eq.${itemId}&order=fecha.asc,created_at.asc`);
+    const body = document.getElementById('kardex-body');
+    if(!movs.length){ body.innerHTML = '<div class="empty">Sin movimientos registrados todavía.</div>'; return; }
+    const tipoLabel = {entrada:'Entrada', salida:'Salida', ajuste:'Ajuste'};
+    const refLabel = {dte:'Venta (DTE)', manual:'Compra manual'};
+    body.innerHTML = `<table class="grid"><thead><tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Costo unit.</th><th>Costo total</th><th>Saldo cant.</th><th>Costo prom.</th><th>Origen</th></tr></thead><tbody>` +
+      movs.map(m=>`<tr>
+        <td class="mono">${m.fecha}</td>
+        <td><span class="pill ${m.tipo==='entrada'?'clasificado':'excepcion'}">${tipoLabel[m.tipo]||m.tipo}</span></td>
+        <td class="mono">${m.tipo==='salida'?'-':''}${Number(m.cantidad).toFixed(2)}</td>
+        <td class="mono">$${Number(m.costo_unitario).toFixed(4)}</td>
+        <td class="mono">$${Number(m.costo_total).toFixed(2)}</td>
+        <td class="mono">${Number(m.saldo_cantidad).toFixed(2)}</td>
+        <td class="mono">$${Number(m.saldo_costo_promedio).toFixed(4)}</td>
+        <td>${refLabel[m.referencia_tipo]||m.referencia_tipo||''}</td>
+      </tr>`).join('') + '</tbody></table>';
+  }catch(e){
+    document.getElementById('kardex-body').innerHTML = `<div class="empty">Error cargando kardex: ${e.message}</div>`;
+  }
 }
 
 function openInventoryItemModal(){
