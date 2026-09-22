@@ -147,6 +147,7 @@
           <button class="navbtn active" data-view="ventas_registrar">Registrar Venta</button>
           <button class="navbtn" data-view="ventas_registradas">Ventas Registradas</button>
           <button class="navbtn" data-view="ventas_config">Configuración de Ventas</button>
+          <button class="navbtn" data-view="cxc">Cuentas por Cobrar</button>
         </div>
       </div>
       <div class="navgroup">
@@ -306,7 +307,7 @@ function acctOptions(selectedId){
 function setView(v){
   view = v;
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
-  const titles = {ventas_registrar:'Registrar Venta', ventas_registradas:'Ventas Registradas', ventas_config:'Configuración de Ventas', dtes:'Documentos DTE (compras y otros)', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', libro_compras:'Libro de Compras', libro_ventas_cf:'Libro de Ventas — Consumidor Final', libro_ventas_ccf:'Libro de Ventas — Crédito Fiscal', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', clientes:'Clientes'};
+  const titles = {ventas_registrar:'Registrar Venta', ventas_registradas:'Ventas Registradas', ventas_config:'Configuración de Ventas', cxc:'Cuentas por Cobrar', dtes:'Documentos DTE (compras y otros)', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', libro_compras:'Libro de Compras', libro_ventas_cf:'Libro de Ventas — Consumidor Final', libro_ventas_ccf:'Libro de Ventas — Crédito Fiscal', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', clientes:'Clientes'};
   document.getElementById('viewtitle').textContent = titles[v];
   render();
 }
@@ -336,6 +337,7 @@ async function render(){
   else if(view==='ventas_registrar') await renderVentasRegistrar(content, actions);
   else if(view==='ventas_registradas') await renderVentasRegistradas(content, actions);
   else if(view==='ventas_config') await renderVentasConfig(content, actions);
+  else if(view==='cxc') await renderCxC(content, actions);
   else if(view==='excepciones') await renderExcepciones(content, actions);
   else if(view==='inventario') await renderInventario(content, actions);
   else if(view==='asientos') await renderAsientos(content, actions);
@@ -759,6 +761,76 @@ async function renderVentasConfig(content, actions){
     try{
       await pg('tenant_sales_config', {method:'POST', body: JSON.stringify(payload), headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}});
       toast('Configuración de ventas guardada','ok');
+    }catch(e){ toast('Error: '+e.message,'err'); }
+  };
+}
+
+// ---------- Cuentas por Cobrar ----------
+async function renderCxC(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const docs = await pg(`dte_documents?select=*&tenant_id=eq.${activeTenantId}&condicion_pago=eq.credito&order=fecha_vencimiento.asc.nullslast`);
+  if(!docs.length){ content.innerHTML = '<div class="empty">Sin ventas al crédito registradas para este cliente.</div>'; return; }
+  const ids = docs.map(d=>d.id);
+  const cobros = await pg(`cobros?select=dte_id,monto&dte_id=in.(${ids.join(',')})`);
+  const cobradoPorDte = {};
+  cobros.forEach(c=>{ cobradoPorDte[c.dte_id] = (cobradoPorDte[c.dte_id]||0) + Number(c.monto); });
+
+  const hoy = new Date().toISOString().slice(0,10);
+  let totalPendiente = 0, totalVencido = 0;
+  const filas = docs.map(d=>{
+    const cobrado = cobradoPorDte[d.id] || 0;
+    const total = Number(d.total_pagar)||0;
+    const saldo = total - cobrado;
+    const vencida = d.fecha_vencimiento && d.fecha_vencimiento < hoy && saldo > 0.01;
+    if(saldo > 0.01){ totalPendiente += saldo; if(vencida) totalVencido += saldo; }
+    return {...d, cobrado, saldo, vencida};
+  });
+
+  content.innerHTML = `
+    <div class="kv">
+      <div class="item"><div class="lbl">Saldo total pendiente</div><div class="val">$${totalPendiente.toFixed(2)}</div></div>
+      <div class="item"><div class="lbl">Vencido</div><div class="val" style="color:var(--danger);">$${totalVencido.toFixed(2)}</div></div>
+    </div>
+    <table class="grid"><thead><tr><th>Cliente</th><th>N° Documento</th><th>Fecha</th><th>Vence</th><th>Total</th><th>Cobrado</th><th>Saldo</th><th></th></tr></thead><tbody>` +
+    filas.map(d=>`<tr>
+      <td>${d.nombre_receptor||''}</td><td class="mono">${d.numero_control||''}</td>
+      <td class="mono">${d.fecha_emision}</td>
+      <td class="mono">${d.fecha_vencimiento||'—'} ${d.vencida?'<span class="pill excepcion">vencida</span>':''}</td>
+      <td class="mono">$${Number(d.total_pagar).toFixed(2)}</td>
+      <td class="mono">$${d.cobrado.toFixed(2)}</td>
+      <td class="mono">${d.saldo>0.01?'$'+d.saldo.toFixed(2):'<span class="pill clasificado">saldada</span>'}</td>
+      <td>${d.saldo>0.01?`<button class="btn small" data-id="${d.id}" data-saldo="${d.saldo}" data-nombre="${(d.nombre_receptor||'').replace(/"/g,'')}">Registrar cobro</button>`:''}</td>
+    </tr>`).join('') + '</tbody></table>';
+  content.querySelectorAll('button[data-id]').forEach(b=>{
+    b.onclick = ()=> openCobroModal(b.dataset.id, parseFloat(b.dataset.saldo), b.dataset.nombre);
+  });
+}
+
+function openCobroModal(dteId, saldo, nombre){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Registrar cobro — ${nombre}</h3>
+    <p class="hint">Saldo pendiente: $${saldo.toFixed(2)}</p>
+    <div class="field"><label>Fecha del cobro</label><input id="cobro-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Monto a cobrar</label><input id="cobro-monto" type="number" step="0.01" value="${saldo.toFixed(2)}"></div>
+    <div class="field"><label>¿Dónde entró el dinero? (Caja o Banco)</label><select id="cobro-cuenta">${acctOptions(null)}</select></div>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save">Registrar cobro</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-save').onclick = async ()=>{
+    const monto = parseFloat(document.getElementById('cobro-monto').value)||0;
+    const fecha = document.getElementById('cobro-fecha').value;
+    const cuenta = document.getElementById('cobro-cuenta').value;
+    if(monto<=0){ toast('El monto debe ser mayor a cero','err'); return; }
+    if(!cuenta){ toast('Selecciona la cuenta donde entró el dinero','err'); return; }
+    try{
+      const out = await pg('rpc/registrar_cobro', {method:'POST', body: JSON.stringify({p_dte_id:dteId, p_monto:monto, p_fecha:fecha, p_cuenta_cobro_id:cuenta})});
+      if(out.error){ toast(out.error,'err'); return; }
+      toast(`Cobro registrado. Saldo restante: $${Number(out.saldo_restante).toFixed(2)}`,'ok');
+      closeModal(); render();
     }catch(e){ toast('Error: '+e.message,'err'); }
   };
 }
