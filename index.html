@@ -142,6 +142,14 @@
     </div>
     <div id="nav">
       <div class="navgroup">
+        <div class="navgroup-header" data-group="ventas">Ventas</div>
+        <div class="navgroup-items" data-group-items="ventas">
+          <button class="navbtn active" data-view="ventas_registrar">Registrar Venta</button>
+          <button class="navbtn" data-view="ventas_registradas">Ventas Registradas</button>
+          <button class="navbtn" data-view="ventas_config">Configuración de Ventas</button>
+        </div>
+      </div>
+      <div class="navgroup">
         <div class="navgroup-header" data-group="finanzas">Área de Finanzas</div>
         <div class="navgroup-items" data-group-items="finanzas">
           <button class="navbtn" data-view="estados">Estados Financieros</button>
@@ -152,7 +160,7 @@
       <div class="navgroup">
         <div class="navgroup-header" data-group="contabilidad">Área de Contabilidad</div>
         <div class="navgroup-items" data-group-items="contabilidad">
-          <button class="navbtn active" data-view="dtes">Documentos DTE</button>
+          <button class="navbtn" data-view="dtes">Documentos DTE (compras y otros)</button>
           <button class="navbtn" data-view="excepciones">Excepciones</button>
           <button class="navbtn" data-view="asientos">Asientos manuales</button>
           <button class="navbtn" data-view="diario">Libro Diario</button>
@@ -273,7 +281,7 @@ function showApp(){
   document.getElementById('app').style.display='flex';
   document.getElementById('userbar-name').textContent = profile.full_name || session.user.email;
   document.getElementById('userbar-role').textContent = profile.role;
-  setView('dtes');
+  setView('ventas_registrar');
 }
 
 // ---------- Tenants ----------
@@ -298,7 +306,7 @@ function acctOptions(selectedId){
 function setView(v){
   view = v;
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
-  const titles = {dtes:'Documentos DTE', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', libro_compras:'Libro de Compras', libro_ventas_cf:'Libro de Ventas — Consumidor Final', libro_ventas_ccf:'Libro de Ventas — Crédito Fiscal', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', clientes:'Clientes'};
+  const titles = {ventas_registrar:'Registrar Venta', ventas_registradas:'Ventas Registradas', ventas_config:'Configuración de Ventas', dtes:'Documentos DTE (compras y otros)', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', libro_compras:'Libro de Compras', libro_ventas_cf:'Libro de Ventas — Consumidor Final', libro_ventas_ccf:'Libro de Ventas — Crédito Fiscal', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', clientes:'Clientes'};
   document.getElementById('viewtitle').textContent = titles[v];
   render();
 }
@@ -325,6 +333,9 @@ async function render(){
   if(view==='clientes') await renderClientes(content, actions);
   else if(!requireTenant()) return;
   else if(view==='dtes') await renderDtes(content, actions);
+  else if(view==='ventas_registrar') await renderVentasRegistrar(content, actions);
+  else if(view==='ventas_registradas') await renderVentasRegistradas(content, actions);
+  else if(view==='ventas_config') await renderVentasConfig(content, actions);
   else if(view==='excepciones') await renderExcepciones(content, actions);
   else if(view==='inventario') await renderInventario(content, actions);
   else if(view==='asientos') await renderAsientos(content, actions);
@@ -653,6 +664,134 @@ async function saveDte(rawJson, items){
     closeModal();
     render();
   }catch(e){ toast('Error guardando DTE: '+e.message,'err'); }
+}
+
+// ---------- Área de Ventas ----------
+async function renderVentasRegistrar(content, actions){
+  actions.innerHTML = `
+    <input type="file" id="dte-file" accept="application/json" style="display:none;">
+    <button class="btn" id="manual-sale-btn">+ Venta con documento físico</button>
+    <button class="btn primary" id="upload-dte-btn">+ Subir DTE (JSON)</button>
+  `;
+  document.getElementById('upload-dte-btn').onclick = ()=> document.getElementById('dte-file').click();
+  document.getElementById('dte-file').onchange = handleDteFile;
+  document.getElementById('manual-sale-btn').onclick = openManualSaleModal;
+
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const tenant = tenants.find(t=>t.id===activeTenantId);
+  const pendientes = await pg(`dte_documents?select=*&tenant_id=eq.${activeTenantId}&nit_emisor=eq.${tenant?tenant.nit:''}&estado=neq.contabilizado&order=fecha_emision.desc`);
+  if(!pendientes.length){
+    content.innerHTML = '<div class="empty">Sin ventas pendientes de completar. Usa los botones de arriba para registrar una nueva.</div>';
+    return;
+  }
+  content.innerHTML = `<p class="hint">Ventas registradas que todavía no tienen su asiento contable generado (falta vincular productos o generar el asiento).</p>
+    <table class="grid"><thead><tr><th>Fecha</th><th>Tipo</th><th>N° Documento</th><th>Cliente</th><th>Monto</th><th>Estado</th><th></th></tr></thead><tbody>` +
+    pendientes.map(d=>`<tr>
+      <td class="mono">${d.fecha_emision||''}</td><td class="mono">${d.tipo_dte||''}${d.raw_json===null?' (físico)':''}</td>
+      <td class="mono">${d.numero_control||''}</td><td>${d.nombre_receptor||'Consumidor final'}</td>
+      <td class="mono">$${Number(d.monto_total||0).toFixed(2)}</td><td><span class="pill ${d.estado}">${d.estado}</span></td>
+      <td><button class="btn small" data-id="${d.id}">Completar venta</button></td>
+    </tr>`).join('') + '</tbody></table>';
+  content.querySelectorAll('button[data-id]').forEach(b=> b.onclick = ()=> openVentaDetailModal(b.dataset.id));
+}
+
+async function renderVentasRegistradas(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const tenant = tenants.find(t=>t.id===activeTenantId);
+  const docs = await pg(`dte_documents?select=*&tenant_id=eq.${activeTenantId}&nit_emisor=eq.${tenant?tenant.nit:''}&order=fecha_emision.desc`);
+  if(!docs.length){ content.innerHTML = '<div class="empty">Sin ventas registradas todavía para este cliente.</div>'; return; }
+  content.innerHTML = `<table class="grid"><thead><tr><th>Fecha</th><th>Tipo</th><th>N° Documento</th><th>Cliente</th><th>Monto</th><th>Estado</th><th></th></tr></thead><tbody>` +
+    docs.map(d=>`<tr>
+      <td class="mono">${d.fecha_emision||''}</td><td class="mono">${d.tipo_dte||''}${d.raw_json===null?' (físico)':''}</td>
+      <td class="mono">${d.numero_control||''}</td><td>${d.nombre_receptor||'Consumidor final'}</td>
+      <td class="mono">$${Number(d.monto_total||0).toFixed(2)}</td><td><span class="pill ${d.estado}">${d.estado}</span></td>
+      <td><button class="btn small" data-id="${d.id}">${d.estado==='contabilizado'?'Ver':'Completar'}</button></td>
+    </tr>`).join('') + '</tbody></table>';
+  content.querySelectorAll('button[data-id]').forEach(b=> b.onclick = ()=> openVentaDetailModal(b.dataset.id));
+}
+
+async function renderVentasConfig(content, actions){
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const rows = await pg(`tenant_sales_config?select=*&tenant_id=eq.${activeTenantId}`);
+  const cfg = rows[0] || {};
+  content.innerHTML = `
+    <p class="hint">Estas cuentas se usan cada vez que generas el asiento de una venta: se abona a Ventas (y al IVA débito fiscal si aplica), según lo que tenga cada documento.</p>
+    <div class="field"><label>Cuenta de Ventas gravadas (Ingreso)</label><select id="cfg-gravadas">${acctOptions(cfg.cuenta_ventas_gravadas_id)}</select></div>
+    <div class="field"><label>Cuenta de Ventas exentas (Ingreso)</label><select id="cfg-exentas">${acctOptions(cfg.cuenta_ventas_exentas_id)}</select></div>
+    <div class="field"><label>Cuenta de IVA Débito Fiscal (Pasivo)</label><select id="cfg-iva">${acctOptions(cfg.cuenta_iva_debito_id)}</select></div>
+    <button class="btn primary" id="cfg-save">Guardar configuración</button>
+  `;
+  document.getElementById('cfg-save').onclick = async ()=>{
+    const payload = {
+      tenant_id: activeTenantId,
+      cuenta_ventas_gravadas_id: document.getElementById('cfg-gravadas').value || null,
+      cuenta_ventas_exentas_id: document.getElementById('cfg-exentas').value || null,
+      cuenta_iva_debito_id: document.getElementById('cfg-iva').value || null,
+      updated_at: new Date().toISOString()
+    };
+    try{
+      await pg('tenant_sales_config', {method:'POST', body: JSON.stringify(payload), headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}});
+      toast('Configuración de ventas guardada','ok');
+    }catch(e){ toast('Error: '+e.message,'err'); }
+  };
+}
+
+async function openVentaDetailModal(dteId){
+  const docs = await pg(`dte_documents?select=*&id=eq.${dteId}`);
+  const doc = docs[0];
+  const items = await pg(`dte_items?select=*&dte_id=eq.${dteId}&order=num_item.asc`);
+  const invItems = await pg(`inventory_items?select=id,nombre,existencia_actual&tenant_id=eq.${activeTenantId}&order=nombre.asc`);
+  const invOptions = (selectedId) => '<option value="">— no es de inventario —</option>' + invItems.map(p=>
+    `<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.nombre} (existencia: ${Number(p.existencia_actual).toFixed(2)})</option>`).join('');
+  const modal = document.getElementById('modal');
+  const yaContabilizada = doc.estado === 'contabilizado';
+  modal.innerHTML = `
+    <h3>${doc.nombre_receptor||'Consumidor final'} · ${doc.numero_control||''}</h3>
+    <p class="hint">${doc.fecha_emision} · $${Number(doc.monto_total).toFixed(2)} · <span class="pill ${doc.estado}">${doc.estado}</span></p>
+    <div id="venta-items-list"></div>
+    ${yaContabilizada ? '<p class="hint">Esta venta ya tiene su asiento contable generado.</p>' : `
+    <div class="field"><label>¿Con qué se cobró? (cuenta de cobro)</label><select id="venta-cta-cobro">${acctOptions(null)}</select></div>
+    `}
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cerrar</button>
+      ${yaContabilizada ? '' : '<button class="btn primary" id="gen-asiento-btn">Generar asiento de venta</button>'}
+    </div>`;
+  const list = document.getElementById('venta-items-list');
+  list.innerHTML = items.map(it => `
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;">
+        <strong style="font-size:13px;">${it.descripcion}</strong>
+        <span class="mono">$${Number(it.venta_gravada+it.venta_exenta||0).toFixed(2)}</span>
+      </div>
+      <div class="field" style="margin-top:8px;margin-bottom:0;">
+        <label>Producto de inventario ${it.inventario_descargado?'<span class="pill clasificado">ya descargado</span>':''}</label>
+        <select data-item="${it.id}" class="venta-prod-select" ${it.inventario_descargado || yaContabilizada?'disabled':''}>${invOptions(it.producto_id)}</select>
+      </div>
+    </div>`).join('') || '<p class="hint">Este documento no tiene ítems.</p>';
+  list.querySelectorAll('.venta-prod-select').forEach(sel=>{
+    sel.onchange = async ()=>{
+      if(!sel.value) return;
+      try{
+        await pg(`dte_items?id=eq.${sel.dataset.item}`, {method:'PATCH', body: JSON.stringify({producto_id: sel.value}), headers:{'Prefer':'return=minimal'}});
+        toast('Producto vinculado','ok');
+      }catch(e){ toast('Error: '+e.message,'err'); }
+    };
+  });
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  const genBtn = document.getElementById('gen-asiento-btn');
+  if(genBtn){
+    genBtn.onclick = async ()=>{
+      const cuentaCobro = document.getElementById('venta-cta-cobro').value;
+      if(!cuentaCobro){ toast('Selecciona con qué se cobró','err'); return; }
+      try{
+        const out = await pg('rpc/registrar_venta_contable', {method:'POST', body: JSON.stringify({p_dte_id: dteId, p_cuenta_cobro_id: cuentaCobro})});
+        if(out.error){ toast(out.error,'err'); return; }
+        toast(`Venta contabilizada. Total: $${Number(out.total).toFixed(2)}${out.items_inventario_descargados?' · '+out.items_inventario_descargados+' producto(s) descontados del inventario':''}`,'ok');
+        closeModal(); render();
+      }catch(e){ toast('Error: '+e.message,'err'); }
+    };
+  }
 }
 
 async function openDteDetail(dteId){
