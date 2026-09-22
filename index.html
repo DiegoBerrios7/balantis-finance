@@ -507,6 +507,7 @@ async function openManualSaleModal(){
     <div class="field"><label>N° de documento (correlativo físico)</label><input id="ms-numero"></div>
     <div class="field"><label>Nombre del cliente</label><input id="ms-cliente" placeholder="Consumidor final si no aplica"></div>
     <div class="field"><label>NIT/NRC del cliente (solo si es Crédito Fiscal)</label><input id="ms-nit-cliente"></div>
+    <p class="hint" id="ms-precio-hint">El precio unitario que captures a continuación se entiende <strong>con IVA incluido</strong> (Factura a consumidor final).</p>
     <div id="ms-items-container"></div>
     <button class="btn small" id="ms-add-item-btn">+ Agregar ítem</button>
     <div class="modalactions">
@@ -517,7 +518,18 @@ async function openManualSaleModal(){
   document.getElementById('modal-cancel').onclick = closeModal;
   document.getElementById('ms-add-item-btn').onclick = ()=> addManualSaleItemRow(invItems);
   document.getElementById('modal-save').onclick = saveManualSale;
+  document.getElementById('ms-tipo').onchange = (e)=> actualizarPistaPrecioVenta(e.target.value);
   addManualSaleItemRow(invItems);
+}
+function actualizarPistaPrecioVenta(tipo){
+  const hint = document.getElementById('ms-precio-hint');
+  const esCF = tipo === '03';
+  hint.innerHTML = esCF
+    ? 'El precio unitario que captures a continuación se entiende <strong>sin IVA (neto)</strong> — el sistema calcula y desglosa el IVA aparte, como en un Crédito Fiscal.'
+    : 'El precio unitario que captures a continuación se entiende <strong>con IVA incluido</strong> (Factura a consumidor final).';
+  document.querySelectorAll('.ms-precio').forEach(inp=>{
+    inp.placeholder = esCF ? 'Precio unit. (sin IVA)' : 'Precio unit. (con IVA)';
+  });
 }
 function addManualSaleItemRow(invItems){
   const c = document.getElementById('ms-items-container');
@@ -526,11 +538,13 @@ function addManualSaleItemRow(invItems){
   row.style.gridTemplateColumns = '1.4fr 1.4fr 0.8fr 0.9fr 0.9fr auto';
   const prodOptions = '<option value="">— sin vincular a inventario —</option>' + (invItems||[]).map(p=>
     `<option value="${p.id}" data-nombre="${p.nombre}">${p.nombre} (existencia: ${Number(p.existencia_actual).toFixed(2)})</option>`).join('');
+  const tipoActual = document.getElementById('ms-tipo') ? document.getElementById('ms-tipo').value : '01';
+  const placeholderPrecio = tipoActual==='03' ? 'Precio unit. (sin IVA)' : 'Precio unit. (con IVA)';
   row.innerHTML = `
     <select class="ms-producto">${prodOptions}</select>
     <input class="ms-desc" type="text" placeholder="Descripción">
     <input class="ms-cant" type="number" step="0.01" placeholder="Cantidad">
-    <input class="ms-precio" type="number" step="0.01" placeholder="Precio unit. (con IVA)">
+    <input class="ms-precio" type="number" step="0.01" placeholder="${placeholderPrecio}">
     <select class="ms-exenta"><option value="no">Gravada</option><option value="si">Exenta</option></select>
     <button class="btn small danger" type="button">×</button>`;
   row.querySelector('.ms-producto').onchange = (e)=>{
@@ -543,16 +557,19 @@ function addManualSaleItemRow(invItems){
 async function saveManualSale(){
   const fecha = document.getElementById('ms-fecha').value;
   const tipo = document.getElementById('ms-tipo').value;
+  const esCF = tipo === '03';
   const numero = document.getElementById('ms-numero').value.trim();
   const clienteNombre = document.getElementById('ms-cliente').value.trim() || 'Consumidor final';
   const clienteNit = document.getElementById('ms-nit-cliente').value.trim() || null;
   const rows = document.querySelectorAll('#ms-items-container .lineRow');
   const items = Array.from(rows).map(r=>{
     const cantidad = parseFloat(r.querySelector('.ms-cant').value)||0;
-    const precioConIva = parseFloat(r.querySelector('.ms-precio').value)||0;
+    const precioCapturado = parseFloat(r.querySelector('.ms-precio').value)||0;
     const esExenta = r.querySelector('.ms-exenta').value === 'si';
-    const totalLinea = cantidad * precioConIva;
-    const gravada = esExenta ? 0 : totalLinea / 1.13;
+    const totalLinea = cantidad * precioCapturado;
+    // Crédito Fiscal: el precio capturado ya es neto (sin IVA) — no se divide.
+    // Factura/Consumidor Final: el precio capturado incluye IVA — se extrae dividiendo entre 1.13.
+    const gravada = esExenta ? 0 : (esCF ? totalLinea : totalLinea / 1.13);
     const exenta = esExenta ? totalLinea : 0;
     const productoId = r.querySelector('.ms-producto').value || null;
     return { descripcion: r.querySelector('.ms-desc').value.trim(), cantidad, venta_gravada: gravada, venta_exenta: exenta, producto_id: productoId };
@@ -771,8 +788,21 @@ async function openVentaDetailModal(dteId){
     `}
     <div class="modalactions">
       <button class="btn" id="modal-cancel">Cerrar</button>
+      ${yaContabilizada ? '' : '<button class="btn danger" id="del-venta-btn">Eliminar venta</button>'}
       ${yaContabilizada ? '' : '<button class="btn primary" id="gen-asiento-btn">Generar asiento de venta</button>'}
     </div>`;
+  const delBtn = document.getElementById('del-venta-btn');
+  if(delBtn){
+    delBtn.onclick = async ()=>{
+      if(!confirm('¿Eliminar esta venta y sus ítems? Esta acción no se puede deshacer.')) return;
+      try{
+        await pg(`dte_items?dte_id=eq.${dteId}`, {method:'DELETE'});
+        await pg(`dte_documents?id=eq.${dteId}`, {method:'DELETE'});
+        toast('Venta eliminada','ok');
+        closeModal(); render();
+      }catch(e){ toast('Error eliminando: '+e.message,'err'); }
+    };
+  }
   if(!yaContabilizada){
     document.getElementById('venta-condicion').onchange = (e)=>{
       const esCredito = e.target.value === 'credito';
