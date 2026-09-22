@@ -834,14 +834,42 @@ async function renderInventario(content, actions){
   content.innerHTML = '<div class="empty">Cargando…</div>';
   const items = await pg(`inventory_items?select=*&tenant_id=eq.${activeTenantId}&order=nombre.asc`);
   if(!items.length){ content.innerHTML = '<div class="empty">Sin productos en inventario para este cliente. Crea el primero.</div>'; return; }
-  content.innerHTML = `<table class="grid"><thead><tr><th>Código</th><th>Producto</th><th>Existencia</th><th>Costo promedio</th><th>Valor en inventario</th><th></th></tr></thead><tbody>` +
-    items.map(it=>`<tr>
+
+  const withValue = items.map(it => ({...it, valor: Number(it.existencia_actual)*Number(it.costo_promedio)}));
+  const totalUnidades = withValue.reduce((s,it)=>s+Number(it.existencia_actual),0);
+  const totalValor = withValue.reduce((s,it)=>s+it.valor,0);
+  const maxValor = Math.max(...withValue.map(it=>it.valor), 0.0001);
+  const sinExistencia = withValue.filter(it=>Number(it.existencia_actual)<=0).length;
+  const ordenado = [...withValue].sort((a,b)=> b.valor - a.valor);
+
+  let html = `
+    <div class="kv">
+      <div class="item"><div class="lbl">Productos</div><div class="val">${items.length}</div></div>
+      <div class="item"><div class="lbl">Unidades totales</div><div class="val">${totalUnidades.toLocaleString(undefined,{maximumFractionDigits:2})}</div></div>
+      <div class="item"><div class="lbl">Valor total en inventario</div><div class="val">$${totalValor.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
+      <div class="item"><div class="lbl">Sin existencia</div><div class="val">${sinExistencia}</div></div>
+    </div>
+    <h3 style="margin:18px 0 10px;font-size:13.5px;color:var(--text-dim);font-weight:600;">Valor por producto</h3>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:22px;">
+      ${ordenado.map(it=>`
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;">
+            <span>${it.nombre}</span><span class="mono">$${it.valor.toFixed(2)}</span>
+          </div>
+          <div style="background:var(--panel-2);border-radius:4px;height:8px;overflow:hidden;">
+            <div style="background:var(--accent);height:100%;width:${Math.max((it.valor/maxValor)*100,1.5)}%;"></div>
+          </div>
+        </div>`).join('')}
+    </div>
+    <table class="grid"><thead><tr><th>Código</th><th>Producto</th><th>Existencia</th><th>Costo promedio</th><th>Valor en inventario</th><th></th></tr></thead><tbody>` +
+    ordenado.map(it=>`<tr>
       <td class="mono">${it.codigo||''}</td><td>${it.nombre}</td>
       <td class="mono">${Number(it.existencia_actual).toFixed(2)} ${it.unidad}</td>
       <td class="mono">$${Number(it.costo_promedio).toFixed(4)}</td>
-      <td class="mono">$${(Number(it.existencia_actual)*Number(it.costo_promedio)).toFixed(2)}</td>
+      <td class="mono">$${it.valor.toFixed(2)}</td>
       <td><button class="btn small" data-kardex="${it.id}" data-nombre="${it.nombre}">Ver Kardex</button> <button class="btn small" data-id="${it.id}" data-nombre="${it.nombre}">+ Entrada</button></td>
     </tr>`).join('') + '</tbody></table>';
+  content.innerHTML = html;
   content.querySelectorAll('button[data-id]').forEach(b=> b.onclick = () => openEntradaModal(b.dataset.id, b.dataset.nombre));
   content.querySelectorAll('button[data-kardex]').forEach(b=> b.onclick = () => openKardexModal(b.dataset.kardex, b.dataset.nombre));
 }
