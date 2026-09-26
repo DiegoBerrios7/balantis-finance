@@ -176,6 +176,7 @@
         <div class="navgroup-items" data-group-items="config">
           <button class="navbtn" data-view="apertura">Saldos de apertura</button>
           <button class="navbtn" data-view="cuentas">Plan de cuentas</button>
+          <button class="navbtn" data-view="reglas">Reglas de Clasificación</button>
           <button class="navbtn" data-view="clientes">Clientes</button>
         </div>
       </div>
@@ -307,7 +308,7 @@ function acctOptions(selectedId){
 function setView(v){
   view = v;
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
-  const titles = {ventas_registrar:'Registrar Venta', ventas_registradas:'Ventas Registradas', ventas_config:'Configuración de Ventas', cxc:'Cuentas por Cobrar', dtes:'Documentos DTE (compras y otros)', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', libro_compras:'Libro de Compras', libro_ventas_cf:'Libro de Ventas — Consumidor Final', libro_ventas_ccf:'Libro de Ventas — Crédito Fiscal', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', clientes:'Clientes'};
+  const titles = {ventas_registrar:'Registrar Venta', ventas_registradas:'Ventas Registradas', ventas_config:'Configuración de Ventas', cxc:'Cuentas por Cobrar', dtes:'Documentos DTE (compras y otros)', excepciones:'Excepciones', inventario:'Inventario', asientos:'Asientos manuales', diario:'Libro Diario', mayor:'Libro Mayor', balanza:'Balanza de Comprobación', libro_compras:'Libro de Compras', libro_ventas_cf:'Libro de Ventas — Consumidor Final', libro_ventas_ccf:'Libro de Ventas — Crédito Fiscal', estados:'Estados Financieros', apertura:'Saldos de apertura', cuentas:'Plan de cuentas', reglas:'Reglas de Clasificación', clientes:'Clientes'};
   document.getElementById('viewtitle').textContent = titles[v];
   render();
 }
@@ -338,6 +339,7 @@ async function render(){
   else if(view==='ventas_registradas') await renderVentasRegistradas(content, actions);
   else if(view==='ventas_config') await renderVentasConfig(content, actions);
   else if(view==='cxc') await renderCxC(content, actions);
+  else if(view==='reglas') await renderReglas(content, actions);
   else if(view==='excepciones') await renderExcepciones(content, actions);
   else if(view==='inventario') await renderInventario(content, actions);
   else if(view==='asientos') await renderAsientos(content, actions);
@@ -922,6 +924,17 @@ async function openVentaDetailModal(dteId){
   }
 }
 
+async function aprenderReglaProveedor(nit, codigoCat, cuentaId){
+  try{
+    const existentes = await pg(`provider_rules?select=id,veces_usada&tenant_id=eq.${activeTenantId}&contraparte_nit=eq.${nit}&codigo_cat=eq.${codigoCat}`);
+    if(existentes.length){
+      await pg(`provider_rules?id=eq.${existentes[0].id}`, {method:'PATCH', body: JSON.stringify({cuenta_id: cuentaId, veces_usada: (existentes[0].veces_usada||0)+1, ultima_vez_usada: new Date().toISOString()}), headers:{'Prefer':'return=minimal'}});
+    } else {
+      await pg('provider_rules', {method:'POST', body: JSON.stringify({tenant_id: activeTenantId, contraparte_nit: nit, codigo_cat: codigoCat, cuenta_id: cuentaId, veces_usada: 1, ultima_vez_usada: new Date().toISOString(), creada_desde: 'clasificacion_manual'}), headers:{'Prefer':'return=minimal'}});
+    }
+  }catch(e){ /* no bloquear la clasificación si esto falla */ }
+}
+
 async function openDteDetail(dteId){
   const docs = await pg(`dte_documents?select=*&id=eq.${dteId}`);
   const doc = docs[0];
@@ -929,6 +942,25 @@ async function openDteDetail(dteId){
   const invItems = await pg(`inventory_items?select=id,codigo,nombre,existencia_actual&tenant_id=eq.${activeTenantId}&order=nombre.asc`);
   const invOptions = (selectedId) => '<option value="">— no es de inventario —</option>' + invItems.map(p=>
     `<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.nombre} (existencia: ${Number(p.existencia_actual).toFixed(2)})</option>`).join('');
+
+  // Reglas de clasificación previa: reglas de proveedor (aprendidas) y palabras clave (configuradas por giro del cliente)
+  const [providerRules, keywordRules] = await Promise.all([
+    pg(`provider_rules?select=*&tenant_id=eq.${activeTenantId}&contraparte_nit=eq.${doc.nit_emisor||''}`),
+    pg(`keyword_rules?select=*&tenant_id=eq.${activeTenantId}&order=prioridad.desc`)
+  ]);
+  function sugerirCuenta(item){
+    const porProveedor = providerRules.find(r=>r.codigo_cat===item.codigo_cat);
+    if(porProveedor) return { cuentaId: porProveedor.cuenta_id, motivo: 'proveedor' };
+    const desc = (item.descripcion||'').toLowerCase();
+    for(const kr of keywordRules){
+      if(kr.keyword && desc.includes(kr.keyword.toLowerCase())){
+        const cta = accounts.find(a=>a.codigo===kr.cuenta_codigo);
+        if(cta) return { cuentaId: cta.id, motivo: 'palabra clave: "'+kr.keyword+'"' };
+      }
+    }
+    return null;
+  }
+
   const modal = document.getElementById('modal');
   modal.innerHTML = `
     <h3>${doc.nombre_emisor} · ${doc.numero_control||''}</h3>
@@ -939,26 +971,33 @@ async function openDteDetail(dteId){
       <button class="btn primary" id="mark-done-btn">Marcar como contabilizado</button>
     </div>`;
   const list = document.getElementById('dte-items-list');
-  list.innerHTML = items.map(it => `
+  list.innerHTML = items.map(it => {
+    const sugerencia = !it.cuenta_id ? sugerirCuenta(it) : null;
+    const cuentaPreseleccionada = it.cuenta_id || (sugerencia ? sugerencia.cuentaId : null);
+    return `
     <div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;">
         <strong style="font-size:13px;">${it.descripcion}</strong>
         <span class="mono">$${Number(it.venta_gravada+it.venta_exenta||0).toFixed(2)}</span>
       </div>
       <div class="field" style="margin-top:8px;margin-bottom:6px;">
-        <label>Cuenta contable</label>
-        <select data-item="${it.id}" class="dte-acct-select">${acctOptions(it.cuenta_id)}</select>
+        <label>Cuenta contable ${sugerencia?`<span class="pill clasificado">sugerida por ${sugerencia.motivo}</span>`:''}</label>
+        <select data-item="${it.id}" data-codigo-cat="${it.codigo_cat||''}" class="dte-acct-select">${acctOptions(cuentaPreseleccionada)}</select>
       </div>
       <div class="field" style="margin-bottom:0;">
         <label>Producto de inventario ${it.inventario_descargado?'<span class="pill clasificado">ya descargado</span>':''}</label>
         <select data-item="${it.id}" class="dte-prod-select" ${it.inventario_descargado?'disabled':''}>${invOptions(it.producto_id)}</select>
       </div>
-    </div>`).join('') || '<p class="hint">Este documento no tiene ítems.</p>';
+    </div>`;
+  }).join('') || '<p class="hint">Este documento no tiene ítems.</p>';
   list.querySelectorAll('.dte-acct-select').forEach(sel=>{
     sel.onchange = async ()=>{
       try{
         await pg(`dte_items?id=eq.${sel.dataset.item}`, {method:'PATCH', body: JSON.stringify({cuenta_id: sel.value || null, metodo_clasificacion:'manual'}), headers:{'Prefer':'return=minimal'}});
         toast('Ítem clasificado','ok');
+        if(sel.value && sel.dataset.codigoCat && doc.nit_emisor){
+          await aprenderReglaProveedor(doc.nit_emisor, sel.dataset.codigoCat, sel.value);
+        }
       }catch(e){ toast('Error: '+e.message,'err'); }
     };
   });
@@ -1681,6 +1720,69 @@ async function renderLibroVentasCF(content, actions){
 }
 
 // ---------- Plan de cuentas ----------
+// ---------- Reglas de Clasificación (palabras clave por giro del cliente) ----------
+async function renderReglas(content, actions){
+  actions.innerHTML = `<button class="btn primary" id="new-regla-btn">+ Nueva regla</button>`;
+  document.getElementById('new-regla-btn').onclick = openReglaModal;
+  content.innerHTML = '<div class="empty">Cargando…</div>';
+  const reglas = await pg(`keyword_rules?select=*&tenant_id=eq.${activeTenantId}&order=prioridad.desc`);
+  const provRules = await pg(`provider_rules?select=*,tenant_accounts(codigo,nombre)&tenant_id=eq.${activeTenantId}&order=veces_usada.desc`);
+  let html = `<p class="hint">Estas reglas se usan para sugerir la cuenta contable automáticamente cuando subes un DTE de compra, según el giro de este cliente. Puedes cambiar la sugerencia siempre que quieras.</p>`;
+  html += `<h3 style="margin:16px 0 8px;font-size:13.5px;color:var(--text-dim);">Palabras clave (configuradas por ti)</h3>`;
+  if(!reglas.length){
+    html += '<div class="empty">Sin palabras clave configuradas todavía para este cliente.</div>';
+  } else {
+    const cuentaMap = Object.fromEntries(accounts.map(a=>[a.codigo,a]));
+    html += `<table class="grid"><thead><tr><th>Palabra clave</th><th>Cuenta</th><th>Prioridad</th><th></th></tr></thead><tbody>` +
+      reglas.map(r=>{
+        const cta = cuentaMap[r.cuenta_codigo];
+        return `<tr><td>${r.keyword}</td><td class="mono">${r.cuenta_codigo}${cta?' · '+cta.nombre:' (cuenta no encontrada)'}</td><td class="mono">${r.prioridad}</td><td><button class="btn small danger" data-del="${r.id}">Borrar</button></td></tr>`;
+      }).join('') + '</tbody></table>';
+  }
+  html += `<h3 style="margin:22px 0 8px;font-size:13.5px;color:var(--text-dim);">Aprendidas por proveedor (automático)</h3>`;
+  if(!provRules.length){
+    html += '<div class="empty">Todavía no hay reglas aprendidas — se crean solas cada vez que clasificas un ítem de un DTE.</div>';
+  } else {
+    html += `<table class="grid"><thead><tr><th>NIT Proveedor</th><th>Código catálogo</th><th>Cuenta</th><th>Veces usada</th></tr></thead><tbody>` +
+      provRules.map(r=>`<tr><td class="mono">${r.contraparte_nit}</td><td class="mono">${r.codigo_cat||''}</td><td>${r.tenant_accounts?r.tenant_accounts.codigo+' · '+r.tenant_accounts.nombre:''}</td><td class="mono">${r.veces_usada}</td></tr>`).join('') + '</tbody></table>';
+  }
+  content.innerHTML = html;
+  content.querySelectorAll('button[data-del]').forEach(b=>{
+    b.onclick = async ()=>{
+      if(!confirm('¿Borrar esta palabra clave?')) return;
+      try{ await pg(`keyword_rules?id=eq.${b.dataset.del}`, {method:'DELETE'}); render(); }
+      catch(e){ toast('Error: '+e.message,'err'); }
+    };
+  });
+}
+function openReglaModal(){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <h3>Nueva palabra clave</h3>
+    <p class="hint">Cuando la descripción de un ítem comprado contenga esta palabra, se sugerirá automáticamente la cuenta elegida.</p>
+    <div class="field"><label>Palabra clave (ej: "mascarilla", "combustible", "lija")</label><input id="regla-keyword"></div>
+    <div class="field"><label>Cuenta contable a sugerir</label><select id="regla-cuenta">${acctOptions(null)}</select></div>
+    <div class="field"><label>Prioridad (mayor número = se revisa primero)</label><input id="regla-prioridad" type="number" value="1"></div>
+    <div class="modalactions">
+      <button class="btn" id="modal-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-save">Guardar regla</button>
+    </div>`;
+  document.getElementById('modalbg').style.display='flex';
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-save').onclick = async ()=>{
+    const keyword = document.getElementById('regla-keyword').value.trim();
+    const cuentaId = document.getElementById('regla-cuenta').value;
+    const prioridad = parseInt(document.getElementById('regla-prioridad').value)||1;
+    if(!keyword || !cuentaId){ toast('Completa la palabra clave y la cuenta','err'); return; }
+    const cuenta = accounts.find(a=>a.id===cuentaId);
+    try{
+      await pg('keyword_rules', {method:'POST', body: JSON.stringify({tenant_id: activeTenantId, keyword, cuenta_codigo: cuenta.codigo, prioridad}), headers:{'Prefer':'return=minimal'}});
+      toast('Regla guardada','ok');
+      closeModal(); render();
+    }catch(e){ toast('Error: '+e.message,'err'); }
+  };
+}
+
 async function renderCuentas(content, actions){
   content.innerHTML = '<div class="empty">Cargando…</div>';
   const rows = await pg(`tenant_accounts?select=*&tenant_id=eq.${activeTenantId}&order=codigo.asc`);
